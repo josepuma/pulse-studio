@@ -183,6 +183,13 @@ public enum Theme {
         /// ringed button is taller than a line of text.
         public static let pill: CGFloat = 44
 
+        /// 150 — the transport's scrub bar at rest.
+        public static let scrubBar: CGFloat = 150
+        /// 60 — the least the scrub bar shrinks to when the control row is
+        /// short of width. It is the one control that can give way: text that
+        /// does wraps inside a one-line pill.
+        public static let scrubBarMinimum: CGFloat = 60
+
         /// 60 — one image in a picker grid: big enough to tell a flame from
         /// a wisp, small enough for five across a popover.
         public static let pickerTile: CGFloat = 60

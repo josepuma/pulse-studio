@@ -139,9 +139,14 @@ struct CanvasOverlayControls: View {
                     .font(Theme.Typography.readout)
                     .foregroundStyle(Theme.Palette.tertiary)
             }
+            // Never wraps: squeezed, the timecode broke onto two lines inside a
+            // one-line pill. The scrub bar beside it is what gives way.
+            .lineLimit(1)
+            .fixedSize()
 
             ScrubBar(model: model)
-                .frame(width: 150)
+                .frame(minWidth: Theme.Size.scrubBarMinimum, idealWidth: Theme.Size.scrubBar, maxWidth: Theme.Size.scrubBar)
+                .layoutPriority(-1)
         }
         .padding(.horizontal, Theme.Spacing.regular)
         .frame(height: Theme.Size.pill)

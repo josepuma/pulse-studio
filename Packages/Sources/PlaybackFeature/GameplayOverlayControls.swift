@@ -51,7 +51,7 @@ struct GameplayOverlayControls: View {
             .pickerStyle(.inline)
             .labelsHidden()
         } label: {
-            Text(model.selectedGameplayDifficultyName ?? "")
+            Text(Self.shortName(model.selectedGameplayDifficultyName ?? ""))
                 .font(Theme.Typography.micro)
                 .lineLimit(1)
         }
@@ -59,6 +59,22 @@ struct GameplayOverlayControls: View {
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Which difficulty's hit objects the overlay shows")
+        .help("Which difficulty's hit objects the overlay shows: \(model.selectedGameplayDifficultyName ?? "")")
+    }
+
+    /// How many characters of a difficulty's name the bar shows.
+    static let nameLimit = 14
+    private static let timingMarker = " (timing)"
+
+    /// A difficulty name bounded for the bar. Cut in the string, not with a
+    /// frame: a menu is an AppKit control and claims its label's full width
+    /// whatever frame it is given, so a long name pushed the timecode onto two
+    /// lines. The "(timing)" marker is kept, since it says why this one is the
+    /// default; the whole name is in the menu and the tooltip.
+    static func shortName(_ name: String) -> String {
+        let marker = name.hasSuffix(timingMarker) ? timingMarker : ""
+        let version = String(name.dropLast(marker.count))
+        guard version.count > nameLimit else { return name }
+        return String(version.prefix(nameLimit - 1)) + "…" + marker
     }
 }
