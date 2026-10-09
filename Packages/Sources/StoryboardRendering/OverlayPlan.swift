@@ -29,10 +29,12 @@ struct OverlayPlan {
     var instances: [OverlayQuadInstance] = []
     /// Approach circles, drawn after every object.
     var approach: Range<Int> = 0 ..< 0
+    /// Kiai fountain stars, drawn additively after everything else.
+    var fountain: Range<Int> = 0 ..< 0
     /// Depth slabs the frame needs (one per frame entry, hidden or not).
     var slotCount = 0
 
-    var isEmpty: Bool { objects.isEmpty }
+    var isEmpty: Bool { objects.isEmpty && fountain.isEmpty }
 
     /// The per-draw uniforms of one object (`nil`: the approach circles).
     func uniforms(for object: Object?, projection: matrix_float4x4) -> OverlayDrawUniforms {
@@ -50,7 +52,7 @@ struct OverlayPlan {
         )
     }
 
-    static func build(_ frame: [ObjectVisual]) -> OverlayPlan {
+    static func build(_ frame: [ObjectVisual], fountains: [FountainParticle] = []) -> OverlayPlan {
         var plan = OverlayPlan()
         plan.slotCount = frame.count
         var approaches: [OverlayQuadInstance] = []
@@ -125,6 +127,22 @@ struct OverlayPlan {
         let approachStart = plan.instances.count
         plan.instances.append(contentsOf: approaches)
         plan.approach = approachStart ..< plan.instances.count
+
+        let fountainStart = plan.instances.count
+        for particle in fountains {
+            guard particle.position.x.isFinite, particle.position.y.isFinite,
+                  particle.alpha.isFinite, particle.alpha > 0,
+                  particle.scale.isFinite, particle.scale > 0, particle.angle.isFinite
+            else { continue }
+            plan.instances.append(OverlayQuadInstance(
+                position: SIMD2<Float>(Float(particle.position.x), Float(particle.position.y)),
+                radius: Float(FountainMapping.starRadius(scale: particle.scale)),
+                alpha: Float(particle.alpha),
+                color: GameplayOverlayStyle.fountainColor,
+                angle: Float(particle.angle), progress: 0, kind: OverlayKindStar.rawValue,
+            ))
+        }
+        plan.fountain = fountainStart ..< plan.instances.count
         return plan
     }
 }

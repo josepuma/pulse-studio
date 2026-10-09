@@ -25,6 +25,8 @@ enum GameplayOverlayStyle {
     static let ballColor = SIMD4<Float>(1, 0.93, 0.55, 1)
     static let arrowColor = SIMD4<Float>(1, 1, 1, 1)
     static let spinnerColor = SIMD4<Float>(1, 0.40, 0.67, 1)
+    /// Kiai fountain stars: lazer's texture is white, drawn additively.
+    static let fountainColor = SIMD4<Float>(1, 1, 1, 1)
 
     /// Share of the slider radius the white border takes, from the rim inwards.
     /// Matches osu!lazer's `DrawableSliderPath.BORDER_PORTION` (0.128f, checked

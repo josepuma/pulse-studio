@@ -202,4 +202,50 @@ struct OverlayPlanTests {
         for _ in 0 ..< 5 { #expect(holder.acquire { throw Boom() } == nil) }
         #expect(holder.buildCount == 1)
     }
+
+    // ─── Kiai fountains ──────────────────────────────────────────────────────
+
+    private func star(
+        _ side: FountainSide = .left, x: Double = 10, y: Double = 20, alpha: Double = 0.5,
+        scale: Double = 2, angle: Double = 1.25,
+    ) -> FountainParticle {
+        FountainParticle(side: side, position: PlayfieldPoint(x: x, y: y), alpha: alpha, scale: scale, angle: angle)
+    }
+
+    @Test("a fountain star is one white star instance: position, angle, fade alpha, size by scale")
+    func fountainInstance() throws {
+        let plan = OverlayPlan.build([], fountains: [star()])
+        let instance = try #require(plan.instances.first)
+        #expect(plan.instances.count == 1)
+        #expect(instance.kind == OverlayKindStar.rawValue)
+        #expect(instance.position == SIMD2<Float>(10, 20))
+        #expect(abs(instance.alpha - 0.5) < 1e-6)
+        #expect(abs(instance.angle - 1.25) < 1e-6)
+        // 32 units wide at scale 2, 0.625 px per unit: half-width 20.
+        #expect(abs(instance.radius - 20) < 1e-5)
+        #expect(instance.color == SIMD4<Float>(1, 1, 1, 1))
+        #expect(plan.fountain == 0 ..< 1)
+    }
+
+    @Test("fountains alone make the plan non-empty, and come AFTER objects and approach circles")
+    func fountainsLast() {
+        #expect(!OverlayPlan.build([], fountains: [star()]).isEmpty)
+        #expect(OverlayPlan.build([], fountains: []).isEmpty)
+
+        let plan = OverlayPlan.build([visual(0, approachScale: 2, approachAlpha: 1)], fountains: [star(), star(.right)])
+        #expect(plan.instances.map(\.kind) == [
+            OverlayKindCircle.rawValue, OverlayKindApproach.rawValue,
+            OverlayKindStar.rawValue, OverlayKindStar.rawValue,
+        ])
+        #expect(plan.approach == 1 ..< 2)
+        #expect(plan.fountain == 2 ..< 4)
+    }
+
+    @Test("an invisible or non-finite star is not planned")
+    func fountainFilters() {
+        let plan = OverlayPlan.build([], fountains: [
+            star(alpha: 0), star(x: .nan), star(scale: 0), star(angle: .infinity), star(),
+        ])
+        #expect(plan.fountain.count == 1)
+    }
 }

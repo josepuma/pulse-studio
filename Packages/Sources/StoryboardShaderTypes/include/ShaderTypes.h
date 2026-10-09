@@ -57,6 +57,8 @@ typedef enum OverlayKind {
     OverlayKindReverseArrow = 2,
     OverlayKindBall = 3,
     OverlayKindSpinner = 4,
+    /// A kiai fountain star: drawn additively, after everything else.
+    OverlayKindStar = 5,
 } OverlayKind;
 
 /// One gameplay-overlay shape (editor only). Drawn as a quad whose half-extent

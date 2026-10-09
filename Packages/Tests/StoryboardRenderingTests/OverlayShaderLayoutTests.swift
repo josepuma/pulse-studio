@@ -106,4 +106,10 @@ struct OverlayShaderLayoutTests {
         let vertex = ["x", "y", "distance"]
         #expect(order(try body(of: "SliderVertex"), vertex) == vertex)
     }
+
+    @Test("the star kind has the same value in the header and the shader")
+    func starKind() throws {
+        #expect(OverlayKindStar.rawValue == 5)
+        #expect(try shaderSource().contains("kOverlayKindStar = 5"))
+    }
 }

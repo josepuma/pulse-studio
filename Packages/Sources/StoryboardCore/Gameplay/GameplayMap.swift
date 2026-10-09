@@ -16,6 +16,8 @@ public final class GameplayMap: @unchecked Sendable {
     public let comboColours: [ComboColour]
     public let objects: [PlacedObject]
     public let index: GameplayIndex
+    /// The kiai star fountains, a pure function of time.
+    public let fountains: KiaiFountains
 
     private struct Entry {
         let path: SliderPath
@@ -29,6 +31,7 @@ public final class GameplayMap: @unchecked Sendable {
     public init(_ gameplay: BeatmapGameplay) {
         difficulty = gameplay.difficulty
         comboColours = gameplay.comboColours
+        fountains = KiaiFountains(starts: gameplay.kiaiStarts)
         let radius = BeatmapDifficultyMath.radius(cs: gameplay.difficulty.cs)
         let preempt = BeatmapDifficultyMath.preempt(ar: gameplay.difficulty.ar)
         objects = gameplay.hitObjects.enumerated().map { position, object in

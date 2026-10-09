@@ -21,6 +21,7 @@ public enum OsuGameplayParser {
         var green: [InheritedPoint] = []
         var objects: [HitObject] = []
         var colours: [Int: ComboColour] = [:]
+        var effectPoints: [(time: Double, kiai: Bool)] = []
 
         for rawLine in source.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
             let line = rawLine.trimmed()
@@ -41,7 +42,7 @@ public enum OsuGameplayParser {
                 }
 
             case "[TimingPoints]":
-                parseControlPoint(line, red: &red, green: &green)
+                parseControlPoint(line, red: &red, green: &green, effects: &effectPoints)
 
             case "[Colours]":
                 parseColour(line, into: &colours)
@@ -65,6 +66,7 @@ public enum OsuGameplayParser {
             comboColours: colours.isEmpty
                 ? ComboColour.defaults
                 : colours.sorted { $0.key < $1.key }.map(\.value),
+            kiaiStarts: KiaiFountains.starts(from: effectPoints),
         )
     }
 
@@ -123,8 +125,13 @@ public enum OsuGameplayParser {
         _ line: String,
         red: inout [UninheritedTimingPoint],
         green: inout [InheritedPoint],
+        effects: inout [(time: Double, kiai: Bool)],
     ) {
         guard let point = TimingPointLine.parse(line) else { return }
+        // Kiai rides on every timing point, red or green, valid tempo or not.
+        if abs(point.time) <= timeLimit, effects.count < maxControlPoints {
+            effects.append((time: point.time, kiai: point.kiai))
+        }
 
         if point.isUninherited {
             // Same filter as OsuParser: a red point needs a real tempo.

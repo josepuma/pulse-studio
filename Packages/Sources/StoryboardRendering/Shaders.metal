@@ -175,6 +175,7 @@ constant uint kOverlayKindApproach = 1;
 constant uint kOverlayKindReverseArrow = 2;
 constant uint kOverlayKindBall = 3;
 constant uint kOverlayKindSpinner = 4;
+constant uint kOverlayKindStar = 5;
 
 /// How far past the radius the quad reaches, so the antialiased edge is not cut.
 constant float kOverlayMargin = 1.15;
@@ -215,6 +216,22 @@ static float overlayCoverage(float distance, float pixel)
     return clamp(0.5 - distance / pixel, 0.0, 1.0);
 }
 
+/// A five-point star with a tip up, outer radius 1 (the quad's half-extent) and
+/// inner-to-outer ratio `rf`. Inigo Quilez's `sdStar5` (MIT), y up.
+static float starDistance(float2 p, float rf)
+{
+    const float2 k1 = float2(0.809016994375, -0.587785252292);
+    const float2 k2 = float2(-k1.x, k1.y);
+    p.x = abs(p.x);
+    p -= 2.0 * max(dot(k1, p), 0.0) * k1;
+    p -= 2.0 * max(dot(k2, p), 0.0) * k2;
+    p.x = abs(p.x);
+    p.y -= 1.0;
+    const float2 ba = rf * float2(-k1.y, k1.x) - float2(0.0, 1.0);
+    const float h = clamp(dot(p, ba) / dot(ba, ba), 0.0, 1.0);
+    return length(p - ba * h) * sign(p.y * ba.x - p.x * ba.y);
+}
+
 fragment float4 overlayQuadFragment(
     OverlayRaster in [[stage_in]],
     constant OverlayDrawUniforms &uniforms [[buffer(BufferIndexUniforms)]])
@@ -248,6 +265,17 @@ fragment float4 overlayQuadFragment(
         const float2 normal = normalize(float2(0.45, 0.9));
         const float edge = max(-p.x - 0.4, dot(float2(p.x - 0.5, abs(p.y)), normal));
         coverage = overlayCoverage(edge, pixel);
+    } else if (in.kind == kOverlayKindStar) {
+        // osu!lazer's `transformPosition` turns the star counter-clockwise on
+        // screen by `angle`; undo it to find the point in the star's own frame,
+        // then flip y (screen y is down, the SDF's is up).
+        const float c = cos(in.angle);
+        const float s = sin(in.angle);
+        const float2 q = float2(c * in.local.x - s * in.local.y, s * in.local.x + c * in.local.y);
+        coverage = overlayCoverage(starDistance(float2(q.x, -q.y), 0.45), pixel);
+        // Additive onto whatever is below: light, no occlusion, so the alpha
+        // channel the composite reads stays untouched.
+        return float4(rgb * coverage * in.alpha, 0.0);
     } else {
         // Spinner: a faint full ring and the progress arc swept clockwise from
         // the top.

@@ -43,7 +43,7 @@ struct GameplayOverlayRenderTests {
     /// Draws one overlay frame into a cleared texture and returns its BGRA bytes.
     private func drawOverlay(
         _ renderer: GameplayOverlayRenderer, map: GameplayMap, time: Double,
-        device: MTLDevice, size: (Int, Int) = (width, height),
+        device: MTLDevice, size: (Int, Int) = (width, height), background: Double = 0,
     ) throws -> [UInt8] {
         let target = try texture(device, width: size.0, height: size.1)
         let queue = try #require(device.makeCommandQueue())
@@ -52,7 +52,7 @@ struct GameplayOverlayRenderTests {
         let clear = MTLRenderPassDescriptor()
         clear.colorAttachments[0].texture = target
         clear.colorAttachments[0].loadAction = .clear
-        clear.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+        clear.colorAttachments[0].clearColor = MTLClearColor(red: background, green: background, blue: background, alpha: background)
         clear.colorAttachments[0].storeAction = .store
         try #require(commandBuffer.makeRenderCommandEncoder(descriptor: clear)).endEncoding()
 
@@ -236,5 +236,40 @@ struct GameplayOverlayRenderTests {
         for _ in 0 ..< 5 { renderer.draw(at: 1000, in: view) }
         #expect(renderer.overlayPassCount == 5, "still drawing after it was turned off")
         #expect(renderer.overlayBuildCount == 1)
+    }
+
+    @Test("a kiai start draws stars that ADD light over the storyboard, never darken it; off kiai they are absent")
+    func kiaiStarsAreAdditive() throws {
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let renderer = try GameplayOverlayRenderer(device: device, drawablePixelFormat: .bgra8Unorm)
+        func map(kiai: Int) -> GameplayMap {
+            GameplayMap(OsuGameplayParser.parse("[TimingPoints]\n0,500,4,1,0,100,1,0\n1000,500,4,1,0,100,1,\(kiai)\n"))
+        }
+        // 0.3 grey behind: 77 in every channel.
+        let grey: UInt8 = 77
+        let shot = try drawOverlay(renderer, map: map(kiai: 1), time: 1300, device: device, background: 0.3)
+        var brighter = 0
+        var darker = 0
+        for pixel in stride(from: 0, to: shot.count, by: 4) {
+            let value = shot[pixel] // blue of BGRA
+            if value > grey + 8 { brighter += 1 }
+            if value < grey - 1 { darker += 1 }
+        }
+        #expect(brighter > 50)
+        #expect(darker == 0)
+
+        // Additive means the light a star adds does not depend on what is behind
+        // it. Over-blending (a star leaking alpha) would add less on a brighter
+        // background.
+        let bright = try drawOverlay(renderer, map: map(kiai: 1), time: 1300, device: device, background: 0.6)
+        let brightGrey = 153
+        var worst = 0
+        for pixel in stride(from: 0, to: shot.count, by: 4) where Int(bright[pixel]) < 250 {
+            worst = max(worst, abs((Int(shot[pixel]) - Int(grey)) - (Int(bright[pixel]) - brightGrey)))
+        }
+        #expect(worst <= 2)
+
+        let quiet = try drawOverlay(renderer, map: map(kiai: 0), time: 1300, device: device, background: 0.3)
+        #expect(stride(from: 0, to: quiet.count, by: 4).allSatisfy { quiet[$0] == grey })
     }
 }

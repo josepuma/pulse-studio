@@ -28,6 +28,8 @@ final class GameplayOverlayRenderer {
 
     private let device: MTLDevice
     private let quadPipeline: MTLRenderPipelineState
+    /// Kiai stars: light added to what is below (`one`/`one`).
+    private let additiveQuadPipeline: MTLRenderPipelineState
     private let sliderPrepassPipeline: MTLRenderPipelineState
     private let sliderColorPipeline: MTLRenderPipelineState
     private let compositePipeline: MTLRenderPipelineState
@@ -59,7 +61,7 @@ final class GameplayOverlayRenderer {
 
         func pipeline(
             _ label: String, vertex: String, fragment: String?, format: MTLPixelFormat,
-            depth: Bool, colorMask: MTLColorWriteMask = .all, blend: Bool = true,
+            depth: Bool, colorMask: MTLColorWriteMask = .all, blend: Bool = true, additive: Bool = false,
         ) throws -> MTLRenderPipelineState {
             let descriptor = MTLRenderPipelineDescriptor()
             descriptor.label = label
@@ -74,13 +76,17 @@ final class GameplayOverlayRenderer {
             // Premultiplied over, like the storyboard's normal blend.
             attachment.sourceRGBBlendFactor = .one
             attachment.sourceAlphaBlendFactor = .one
-            attachment.destinationRGBBlendFactor = .oneMinusSourceAlpha
-            attachment.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+            attachment.destinationRGBBlendFactor = additive ? .one : .oneMinusSourceAlpha
+            attachment.destinationAlphaBlendFactor = additive ? .one : .oneMinusSourceAlpha
             if depth { descriptor.depthAttachmentPixelFormat = Self.depthFormat }
             return try device.makeRenderPipelineState(descriptor: descriptor)
         }
 
         quadPipeline = try pipeline("Overlay/Quad", vertex: "overlayQuadVertex", fragment: "overlayQuadFragment", format: Self.colorFormat, depth: true)
+        additiveQuadPipeline = try pipeline(
+            "Overlay/Fountain", vertex: "overlayQuadVertex", fragment: "overlayQuadFragment",
+            format: Self.colorFormat, depth: true, additive: true,
+        )
         sliderPrepassPipeline = try pipeline(
             "Overlay/SliderPrepass", vertex: "sliderBodyVertex", fragment: nil, format: Self.colorFormat,
             depth: true, colorMask: [], blend: false,
@@ -149,7 +155,7 @@ final class GameplayOverlayRenderer {
         widescreen: Bool,
         frameSlot: Int,
     ) {
-        let plan = OverlayPlan.build(frame)
+        let plan = OverlayPlan.build(frame, fountains: map.fountains.particles(at: time, widescreen: widescreen))
         guard !plan.isEmpty else { return }
         guard ensureTargets(width: target.width, height: target.height),
               let colorTarget, let depthTarget
@@ -180,10 +186,12 @@ final class GameplayOverlayRenderer {
             plan.uniforms(for: object, projection: overlayProjection)
         }
 
-        func drawQuads(_ range: Range<Int>, _ buffer: MTLBuffer, _ values: inout OverlayDrawUniforms) {
+        func drawQuads(
+            _ range: Range<Int>, _ buffer: MTLBuffer, _ values: inout OverlayDrawUniforms, additive: Bool = false,
+        ) {
             guard !range.isEmpty else { return }
             encoder.setDepthStencilState(noDepth)
-            encoder.setRenderPipelineState(quadPipeline)
+            encoder.setRenderPipelineState(additive ? additiveQuadPipeline : quadPipeline)
             encoder.setVertexBuffer(buffer, offset: 0, index: Int(BufferIndexOverlayInstances.rawValue))
             encoder.setVertexBytes(&values, length: MemoryLayout<OverlayDrawUniforms>.stride, index: Int(BufferIndexUniforms.rawValue))
             encoder.setFragmentBytes(&values, length: MemoryLayout<OverlayDrawUniforms>.stride, index: Int(BufferIndexUniforms.rawValue))
@@ -214,6 +222,8 @@ final class GameplayOverlayRenderer {
         }
         var approachValues = uniforms(for: nil)
         drawQuads(plan.approach, instanceBuffer, &approachValues)
+        // The fountains stand above the whole playfield, like lazer's HUD layer.
+        drawQuads(plan.fountain, instanceBuffer, &approachValues, additive: true)
         encoder.endEncoding()
 
         // Composite over the drawable, keeping what the storyboard drew.

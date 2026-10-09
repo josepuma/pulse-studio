@@ -158,17 +158,22 @@ public struct BeatmapGameplay: Sendable, Equatable {
     public var hitObjects: [HitObject]
     /// `[Colours]` Combo1...8 in order; the osu! defaults when the map has none.
     public var comboColours: [ComboColour]
+    /// When each kiai section turns on (red and green points both carry the
+    /// flag), ascending: the instants osu!lazer fires its star fountains.
+    public var kiaiStarts: [Double]
 
     public init(
         difficulty: BeatmapDifficulty,
         controlPoints: ControlPoints,
         hitObjects: [HitObject],
         comboColours: [ComboColour] = ComboColour.defaults,
+        kiaiStarts: [Double] = [],
     ) {
         self.difficulty = difficulty
         self.controlPoints = controlPoints
         self.hitObjects = hitObjects
         self.comboColours = comboColours
+        self.kiaiStarts = kiaiStarts
     }
 
     public func comboColour(for object: HitObject) -> ComboColour {
