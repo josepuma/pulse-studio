@@ -29,6 +29,34 @@ public protocol StoryboardSource: Sendable {
     /// Image data for a sprite's file path, or `nil` when it cannot be found —
     /// such sprites are drawn as flat quads rather than failing the load.
     func imageData(for filePath: String) -> Data?
+
+    /// The difficulties whose hit objects the editor can overlay. Names only:
+    /// listing them parses nothing, so a project that never turns the overlay
+    /// on never pays for a hit object.
+    var gameplayDifficulties: [GameplayDifficultyOption] { get }
+
+    /// The difficulty the overlay starts on, one of `gameplayDifficulties`.
+    var defaultGameplayDifficultyPath: String? { get }
+
+    /// Parses one difficulty's hit objects into something drawable.
+    ///
+    /// Synchronous and `Sendable`-friendly on purpose: the model calls it from
+    /// a detached task, never from the main actor.
+    func loadGameplay(path: String) -> GameplayMap?
+}
+
+/// A difficulty the gameplay overlay can show.
+public struct GameplayDifficultyOption: Sendable, Equatable, Hashable {
+    /// Where the `.osu` lives, relative to the beatmap folder.
+    public let path: String
+    /// What the picker says. The one that supplies the beatmap's timing is
+    /// named as such, so it is clear why it is the preselected one.
+    public let name: String
+
+    public init(path: String, name: String) {
+        self.path = path
+        self.name = name
+    }
 }
 
 public extension StoryboardSource {
@@ -38,6 +66,10 @@ public extension StoryboardSource {
     var timing: BeatmapTimingData? { nil }
     /// Sources that can supply every image opt out by inheriting this.
     var missingImagePaths: Set<String> { [] }
+    /// Sources with no hit objects to show opt out by inheriting these.
+    var gameplayDifficulties: [GameplayDifficultyOption] { [] }
+    var defaultGameplayDifficultyPath: String? { nil }
+    func loadGameplay(path: String) -> GameplayMap? { nil }
 }
 
 /// A source backed by `.osb` text already in memory.

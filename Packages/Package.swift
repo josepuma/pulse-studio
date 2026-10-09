@@ -155,7 +155,7 @@ let package = Package(
 
         .testTarget(
             name: "PlaybackFeatureTests",
-            dependencies: ["PlaybackFeature", "StoryboardCore"],
+            dependencies: ["PlaybackFeature", "StoryboardCore", "StoryboardPersistence"],
         ),
 
         .target(

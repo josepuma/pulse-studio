@@ -140,6 +140,13 @@ struct MetalCanvasView: NSViewRepresentable {
                     model.hitTester = { [weak renderer] point, owner in
                         renderer?.clip(at: point, owner: owner)
                     }
+                    // Names only: no hit object is parsed until the overlay
+                    // is first switched on.
+                    model.connectGameplay(
+                        difficulties: source.gameplayDifficulties,
+                        defaultPath: source.defaultGameplayDifficultyPath,
+                        loader: { path in source.loadGameplay(path: path) },
+                    )
                     model.contentLoaded(
                         name: source.displayName,
                         sprites: sprites,
@@ -229,6 +236,11 @@ struct MetalCanvasView: NSViewRepresentable {
                 .visible
             renderer.hoveredClipID = model.hoveredClipID
             renderer.preview = model.clipPreview
+            // The one place the renderer learns of the overlay. Set here, on
+            // the display link, so exports and previews — which never pass
+            // through `draw(in:)` — cannot see it; nil when off, so the
+            // renderer builds and draws nothing.
+            renderer.gameplay = model.showsGameplayOverlay ? model.gameplayMap : nil
             renderer.draw(at: model.currentTime, in: view)
             model.frameRendered(
                 drawnCount: renderer.lastDrawnCount,

@@ -197,6 +197,10 @@ struct CanvasOverlayControls: View {
                 model.showsGuides.toggle()
             }
 
+            // The map's hit objects over the picture. Part of how the canvas is
+            // looked at, like the guides: not saved, not an edit.
+            GameplayOverlayControls(model: model)
+
             // Playback speed, behind the button that was already here for it.
             //
             // A menu rather than a slider: the useful rates are a short list

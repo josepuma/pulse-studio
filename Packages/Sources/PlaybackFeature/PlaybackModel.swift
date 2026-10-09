@@ -221,6 +221,110 @@ public final class PlaybackModel {
 
     public init() {}
 
+    // ─── Gameplay overlay ────────────────────────────────────────────────────
+
+    /// Whether the editor draws the map's hit objects over the storyboard.
+    ///
+    /// Off by default and not part of the project: it is a way of looking, like
+    /// the canvas zoom, so it neither dirties the document nor writes an undo
+    /// step. The first enable is what parses the hit objects.
+    public var showsGameplayOverlay = false {
+        didSet { if showsGameplayOverlay { loadGameplayIfNeeded() } }
+    }
+
+    /// The difficulties the picker offers; empty when the source has none.
+    public private(set) var gameplayDifficulties: [GameplayDifficultyOption] = []
+
+    /// The difficulty the overlay shows.
+    public private(set) var selectedGameplayDifficultyPath: String?
+
+    /// The picker's label for the selection.
+    public var selectedGameplayDifficultyName: String? {
+        gameplayDifficulties.first { $0.path == selectedGameplayDifficultyPath }?.name
+    }
+
+    /// The parsed difficulty, once it has been asked for.
+    ///
+    /// Ignored by observation: the canvas reads it from `draw(in:)`, and a view
+    /// that rebuilt when it landed would be a view watching the overlay's data
+    /// instead of the toggle.
+    @ObservationIgnored public private(set) var gameplayMap: GameplayMap?
+    @ObservationIgnored private var gameplayLoader: (@Sendable (String) -> GameplayMap?)?
+    @ObservationIgnored private var gameplayTask: Task<Void, Never>?
+    /// Bumped when what is being loaded stops being what is wanted, so a slow
+    /// parse of the previous difficulty cannot land over the new one.
+    @ObservationIgnored private var gameplayGeneration = 0
+
+    /// Wires the overlay to a source's difficulties, back to its defaults.
+    ///
+    /// Called when a storyboard opens: another project is another set of hit
+    /// objects, so the toggle goes off and the choice returns to the default.
+    /// Nothing is parsed here.
+    public func connectGameplay(
+        difficulties: [GameplayDifficultyOption],
+        defaultPath: String?,
+        loader: (@Sendable (String) -> GameplayMap?)?,
+    ) {
+        resetGameplay()
+        gameplayDifficulties = difficulties
+        selectedGameplayDifficultyPath = defaultPath ?? difficulties.first?.path
+        gameplayLoader = loader
+    }
+
+    /// Switches the overlay to another difficulty. Parses only when it is on.
+    public func selectGameplayDifficulty(_ path: String) {
+        guard gameplayDifficulties.contains(where: { $0.path == path }),
+              path != selectedGameplayDifficultyPath
+        else { return }
+        selectedGameplayDifficultyPath = path
+        invalidateGameplayLoad()
+        loadGameplayIfNeeded()
+    }
+
+    /// Waits for a load in flight; for tests, which have to look after it.
+    public func settledGameplay() async {
+        await gameplayTask?.value
+    }
+
+    private func resetGameplay() {
+        invalidateGameplayLoad()
+        showsGameplayOverlay = false
+        gameplayDifficulties = []
+        selectedGameplayDifficultyPath = nil
+        gameplayLoader = nil
+    }
+
+    private func invalidateGameplayLoad() {
+        gameplayGeneration &+= 1
+        gameplayTask?.cancel()
+        gameplayTask = nil
+        gameplayMap = nil
+    }
+
+    /// Parses the selected difficulty, off the main thread, the first time it
+    /// is wanted.
+    ///
+    /// The detached work captures the loader and the path as values: reading a
+    /// main-actor property inside it would hop back to the main thread and take
+    /// the parse with it — the trap that cost 1.5 s once with the audio
+    /// analyser.
+    private func loadGameplayIfNeeded() {
+        guard showsGameplayOverlay, gameplayMap == nil, gameplayTask == nil,
+              let path = selectedGameplayDifficultyPath, let loader = gameplayLoader
+        else { return }
+        let generation = gameplayGeneration
+        gameplayTask = Task.detached(priority: .userInitiated) { [weak self, loader, path] in
+            let map = loader(path)
+            await self?.finishGameplayLoad(map, generation: generation)
+        }
+    }
+
+    private func finishGameplayLoad(_ map: GameplayMap?, generation: Int) {
+        guard generation == gameplayGeneration else { return }
+        gameplayMap = map
+        gameplayTask = nil
+    }
+
     // ─── Content ─────────────────────────────────────────────────────────────
 
     /// The storyboard has started loading.
@@ -252,6 +356,7 @@ public final class PlaybackModel {
         waveform = nil
         timing = nil
         missingImagePaths = []
+        resetGameplay()
         isCanvasFullScreen = false
         status = .loading
         sampleSchedule.reset(at: 0, inclusive: true)
