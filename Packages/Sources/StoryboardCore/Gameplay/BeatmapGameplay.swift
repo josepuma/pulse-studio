@@ -132,17 +132,18 @@ public struct ComboColour: Sendable, Equatable {
     /// Combo1 ... Combo8 is the most osu! reads.
     public static let maxCombos = 8
 
-    /// The colour of an object. osu!lazer picks the beatmap colour with
-    /// `ComboIndexWithOffsets` (`LegacyBeatmapSkin.GetComboColour`); the editor's
-    /// mapping is `(index + count - 1) % count`, so the first object (index 1)
-    /// gets Combo1. An empty palette falls back to the defaults.
+    /// The colour of an object. osu!lazer's `LegacyBeatmapSkin.GetComboColour`
+    /// passes `ComboIndexWithOffsets` to `LegacySkin.GetComboColour`, which reads
+    /// `ComboColours[colourIndex % count]`. The `(index + count - 1) % count` in
+    /// lazer's editor belongs to its new-combo button, not to gameplay: using it
+    /// put every colour one step early against a capture of the game. An empty
+    /// palette falls back to the defaults.
     public static func pick(from palette: [ComboColour], indexWithOffsets: Int) -> ComboColour {
         let colours = palette.isEmpty ? defaults : palette
         let count = colours.count
         // `Int.min` and friends cannot occur from the parser, but a hand-made
         // object could carry them: a floor-mod never indexes out of range.
-        // Reduced BEFORE the -1: `Int.min - 1` would trap.
-        let position = ((indexWithOffsets % count) + count - 1) % count
+        let position = ((indexWithOffsets % count) + count) % count
         return colours[position]
     }
 }

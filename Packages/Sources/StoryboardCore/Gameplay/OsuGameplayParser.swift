@@ -222,26 +222,33 @@ public enum OsuGameplayParser {
 
     /// Combo numbers follow the time-sorted order, the one the player sees.
     ///
-    /// The colour index follows osu!lazer's `IHasComboInformation.UpdateComboInformation`:
-    /// `index = last?.ComboIndexWithOffsets ?? 0`, and on a new combo (or the
-    /// first object) `index += ComboOffset + 1`, ComboOffset being the skip bits.
+    /// The colour index follows osu!lazer's `OsuHitObject.UpdateComboInformation`:
+    /// `index = last?.ComboIndexWithOffsets ?? 0`, and `index += ComboOffset + 1`
+    /// when `this is not Spinner && (NewCombo || lastObj == null || lastObj is Spinner)`.
+    /// Spinners never advance the colour even when flagged, and the skip bits
+    /// only count on an object that carries the new-combo flag itself
+    /// (`ConvertHitObjectParser`: `ComboOffset = newCombo ? comboOffset : 0`).
     private static func numbered(_ objects: [HitObject]) -> [HitObject] {
         var result = objects
         var number = 0
         var colourIndex = 0
         var forceNew = false
         for index in result.indices {
+            let isSpinner: Bool
+            if case .spinner = result[index].kind { isSpinner = true } else { isSpinner = false }
             let startsCombo = result[index].newCombo || forceNew || index == 0
             if startsCombo {
                 number = 1
-                colourIndex += result[index].comboSkip + 1
             } else {
                 number += 1
+            }
+            if startsCombo, !isSpinner {
+                colourIndex += (result[index].newCombo ? result[index].comboSkip : 0) + 1
             }
             result[index].comboIndexWithOffsets = colourIndex
             result[index].comboNumber = number
             // osu! starts a new combo on whatever follows a spinner.
-            if case .spinner = result[index].kind { forceNew = true } else { forceNew = false }
+            forceNew = isSpinner
         }
         return result
     }

@@ -44,8 +44,9 @@ struct GameplayFrameTests {
         let frame = GameplayFrame.build(GameplayMap(gameplay), at: 1010)
         let byIndex = Dictionary(uniqueKeysWithValues: frame.map { ($0.objectIndex, $0.comboColour) })
 
-        #expect(byIndex[0] == palette[0])
-        #expect(byIndex[1] == palette[1])
+        // Index modulo palette size, as osu!lazer's LegacySkin reads it.
+        #expect(byIndex[0] == palette[1])
+        #expect(byIndex[1] == palette[0])
     }
 
     @Test("fade-in follows the difficulty rule")
