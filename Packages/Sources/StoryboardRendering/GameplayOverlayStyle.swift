@@ -23,8 +23,8 @@ enum GameplayOverlayStyle {
     static let spinnerColor = SIMD4<Float>(1, 0.40, 0.67, 1)
 
     /// Share of the slider radius the white border takes, from the rim inwards.
-    /// osu!lazer's `DrawableSliderPath.BORDER_PORTION` is 0.128 (from memory of
-    /// the source; not verifiable from this environment, so treat as unconfirmed).
+    /// Matches osu!lazer's `DrawableSliderPath.BORDER_PORTION` (0.128f, checked
+    /// against ppy/osu master).
     static let sliderBorderWidth: Float = 0.128
     /// The ball and the reverse arrow relative to the object radius.
     static let ballScale: Double = 0.9
