@@ -1,0 +1,162 @@
+import Foundation
+import StoryboardCore
+import StoryboardShaderTypes
+import simd
+
+/// What the overlay will draw this frame, decided with no GPU: instance data in
+/// draw order plus where each object's instances and depth slab are. The
+/// renderer only uploads and encodes it, so all of this is covered on CI.
+///
+/// Objects arrive latest-first (the order `GameplayFrame` returns) and are
+/// painted in that order, so the earliest object lands on top, as in osu!.
+struct OverlayPlan {
+    struct Object {
+        /// Position in `GameplayMap.objects`; picks the slider mesh.
+        var objectIndex: Int
+        /// 0 is the earliest (nearest) object.
+        var slot: Int
+        var isSlider: Bool
+        /// Body opacity for a slider mesh.
+        var alpha: Float
+        /// This object's quads: head, ball, arrows.
+        var instances: Range<Int>
+    }
+
+    var objects: [Object] = []
+    var instances: [OverlayQuadInstance] = []
+    /// Approach circles, drawn after every object.
+    var approach: Range<Int> = 0 ..< 0
+    /// Depth slabs the frame needs (one per frame entry, hidden or not).
+    var slotCount = 0
+
+    var isEmpty: Bool { objects.isEmpty }
+
+    static func build(_ frame: [ObjectVisual]) -> OverlayPlan {
+        var plan = OverlayPlan()
+        plan.slotCount = frame.count
+        var approaches: [OverlayQuadInstance] = []
+
+        for (position, visual) in frame.enumerated() {
+            let alpha = visual.alpha * GameplayOverlayStyle.bodyOpacity
+            guard visual.position.x.isFinite, visual.position.y.isFinite,
+                  visual.radius.isFinite, visual.radius > 0, alpha.isFinite, alpha > 0
+            else { continue }
+
+            let start = plan.instances.count
+            let centre = SIMD2<Float>(Float(visual.position.x), Float(visual.position.y))
+            func quad(
+                _ kind: OverlayKind, at point: SIMD2<Float>, radius: Double, alpha: Double,
+                color: SIMD4<Float>, angle: Double = 0, progress: Double = 0,
+            ) -> OverlayQuadInstance {
+                OverlayQuadInstance(
+                    position: point, radius: Float(radius), alpha: Float(alpha), color: color,
+                    angle: Float(angle), progress: Float(progress), kind: kind.rawValue,
+                )
+            }
+
+            switch visual.kind {
+            case .circle:
+                plan.instances.append(quad(OverlayKindCircle, at: centre, radius: visual.radius, alpha: alpha, color: GameplayOverlayStyle.circleColor))
+            case .spinner:
+                plan.instances.append(quad(
+                    OverlayKindSpinner, at: centre, radius: visual.radius, alpha: alpha,
+                    color: GameplayOverlayStyle.spinnerColor, progress: visual.spinnerProgress ?? 0,
+                ))
+            case .slider:
+                plan.instances.append(quad(OverlayKindCircle, at: centre, radius: visual.radius, alpha: alpha, color: GameplayOverlayStyle.sliderColor))
+                for arrow in visual.reverseArrows where arrow.position.x.isFinite && arrow.position.y.isFinite && arrow.angle.isFinite {
+                    plan.instances.append(quad(
+                        OverlayKindReverseArrow,
+                        at: SIMD2<Float>(Float(arrow.position.x), Float(arrow.position.y)),
+                        radius: visual.radius * GameplayOverlayStyle.arrowScale, alpha: alpha,
+                        color: GameplayOverlayStyle.arrowColor, angle: arrow.angle,
+                    ))
+                }
+                if let ball = visual.ball, ball.x.isFinite, ball.y.isFinite {
+                    plan.instances.append(quad(
+                        OverlayKindBall, at: SIMD2<Float>(Float(ball.x), Float(ball.y)),
+                        radius: visual.radius * GameplayOverlayStyle.ballScale, alpha: alpha,
+                        color: GameplayOverlayStyle.ballColor,
+                    ))
+                }
+            }
+
+            plan.objects.append(Object(
+                objectIndex: visual.objectIndex,
+                // Latest-first list: the last entry is the earliest object.
+                slot: frame.count - 1 - position,
+                isSlider: visual.kind == .slider,
+                alpha: Float(alpha),
+                instances: start ..< plan.instances.count,
+            ))
+
+            if visual.approachAlpha.isFinite, visual.approachAlpha > 0, visual.approachScale.isFinite, visual.approachScale > 0 {
+                approaches.append(quad(
+                    OverlayKindApproach, at: centre, radius: visual.radius * visual.approachScale,
+                    alpha: visual.approachAlpha * GameplayOverlayStyle.approachOpacity,
+                    color: GameplayOverlayStyle.approachColor,
+                ))
+            }
+        }
+
+        let approachStart = plan.instances.count
+        plan.instances.append(contentsOf: approaches)
+        plan.approach = approachStart ..< plan.instances.count
+        return plan
+    }
+}
+
+/// Where each object's slider depth slab sits.
+///
+/// `z = slab.base + distance * slab.size`: inside a slider the centreline is
+/// nearest (so a body that crosses itself resolves to one fragment per pixel),
+/// and an earlier object's slab is entirely nearer than a later one's, so its
+/// prepass is never rejected by the later object's depth.
+enum OverlayDepth {
+    static func slab(slot: Int, count: Int) -> (base: Float, size: Float) {
+        // One slab more than objects: the farthest rim stays strictly below the
+        // cleared depth of 1, which `.less` needs to pass.
+        let size = 1 / Float(max(count, 1) + 1)
+        return (Float(max(slot, 0)) * size, size)
+    }
+}
+
+/// The overlay's objects are in storyboard space; the margin of the wide canvas
+/// is added HERE, once, the same way sprites get it.
+enum OverlayProjection {
+    static func matrix(base: matrix_float4x4, widescreen: Bool) -> matrix_float4x4 {
+        var shift = matrix_identity_float4x4
+        shift.columns.3.x = OsuCanvas.offset(widescreen: widescreen)
+        return base * shift
+    }
+}
+
+enum OverlayTargetSize {
+    static func needsRecreate(current: (width: Int, height: Int)?, drawable: (width: Int, height: Int)) -> Bool {
+        guard let current else { return true }
+        return current.width != drawable.width || current.height != drawable.height
+    }
+}
+
+/// A resource built on first use and never when unused: what keeps the overlay
+/// at zero cost while it is off. A failed build is remembered so it is not
+/// retried (and recompiled) every frame.
+struct LazyResource<Value> {
+    private(set) var value: Value?
+    private(set) var buildCount = 0
+    private var failed = false
+
+    mutating func acquire(_ build: () throws -> Value) -> Value? {
+        if let value { return value }
+        guard !failed else { return nil }
+        buildCount += 1
+        do {
+            let built = try build()
+            value = built
+            return built
+        } catch {
+            failed = true
+            return nil
+        }
+    }
+}

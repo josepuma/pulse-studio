@@ -12,6 +12,10 @@
 typedef enum BufferIndex {
     BufferIndexInstances = 0,
     BufferIndexUniforms  = 1,
+    /// Gameplay overlay: `OverlayQuadInstance` array.
+    BufferIndexOverlayInstances = 2,
+    /// Gameplay overlay: `SliderVertex` array of a slider body.
+    BufferIndexSliderVertices = 3,
 } BufferIndex;
 
 /// Per-frame values shared by every sprite.
@@ -44,5 +48,60 @@ typedef struct {
     /// Sprites share a page, so each samples only its own rectangle.
     vector_float4 uvRect;
 } SpriteInstance;
+
+/// What an overlay quad draws. The fragment shader picks the signed-distance
+/// shape from it.
+typedef enum OverlayKind {
+    OverlayKindCircle = 0,
+    OverlayKindApproach = 1,
+    OverlayKindReverseArrow = 2,
+    OverlayKindBall = 3,
+    OverlayKindSpinner = 4,
+} OverlayKind;
+
+/// One gameplay-overlay shape (editor only). Drawn as a quad whose half-extent
+/// is `radius` (plus an antialiasing margin) with the shape as an SDF.
+typedef struct {
+    /// Centre in storyboard space (the projection adds the wide-canvas margin).
+    vector_float2 position;
+    /// Shape radius in storyboard units.
+    float radius;
+    /// Premultiplied-opacity of the whole shape, 0...1.
+    float alpha;
+    /// Straight rgb; alpha is ignored (see `alpha`).
+    vector_float4 color;
+    /// Radians. Only the reverse arrow reads it.
+    float angle;
+    /// 0...1. Only the spinner reads it.
+    float progress;
+    /// An `OverlayKind`.
+    uint32_t kind;
+} OverlayQuadInstance;
+
+/// One vertex of a slider body: storyboard position and distance from the
+/// centreline (0 on it, 1 on the rim). Three scalars on purpose: a float2
+/// followed by a float would pad to 16 bytes and stop matching the CPU mesh.
+typedef struct {
+    float x;
+    float y;
+    float distance;
+} SliderVertex;
+
+/// Per-draw values of the overlay passes.
+typedef struct {
+    matrix_float4x4 projection;
+    /// Slider body colour (rgb).
+    vector_float4 color;
+    /// Slider border colour (rgb).
+    vector_float4 border;
+    /// Depth of the object's slab start: earlier objects are nearer.
+    float slotDepth;
+    /// Slab thickness; `distance * slabSize` is added to `slotDepth`.
+    float slabSize;
+    /// Fraction of the radius the border takes, measured inwards from the rim.
+    float borderWidth;
+    /// Whole-body opacity.
+    float alpha;
+} OverlayDrawUniforms;
 
 #endif /* ShaderTypes_h */

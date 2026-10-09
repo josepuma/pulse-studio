@@ -60,6 +60,12 @@ struct ShaderLayoutTests {
         #expect(library.makeFunction(name: "spriteVertex") != nil)
         #expect(library.makeFunction(name: "spriteFragment") != nil)
         #expect(library.makeFunction(name: "spriteFragmentUntextured") != nil)
+        for name in [
+            "overlayQuadVertex", "overlayQuadFragment", "sliderBodyVertex", "sliderBodyFragment",
+            "compositeVertex", "compositeFragment",
+        ] {
+            #expect(library.makeFunction(name: name) != nil, "\(name) is not in the compiled library")
+        }
     }
 
     @Test("the shader declares its structs inline rather than including the header")

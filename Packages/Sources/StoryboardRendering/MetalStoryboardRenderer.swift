@@ -61,6 +61,7 @@ public final class MetalStoryboardRenderer {
     private let additivePipeline: MTLRenderPipelineState
     private let untexturedPipeline: MTLRenderPipelineState
     private let samplerState: MTLSamplerState
+    private let pixelFormat: MTLPixelFormat
 
     /// Triple buffering: the CPU writes frame N+2 while the GPU reads frame N.
     private static let maxFramesInFlight = 3
@@ -85,6 +86,20 @@ public final class MetalStoryboardRenderer {
     /// only when drawing to the screen: a frame rendered into a texture — an
     /// export, a preview — is always the stage.
     public var visibleArea: CGRect?
+
+    /// The hit objects to draw over the storyboard, or `nil` for none. EDITOR
+    /// ONLY: read by `draw(at:in:)` alone — `render(into:)` (export, previews)
+    /// and the frame they share never look at it, which a test pins. Set only
+    /// by the canvas's `draw(in:)`.
+    public var gameplay: GameplayMap?
+
+    /// Built lazily the first time `gameplay` is set; nothing exists while off.
+    private var overlay = LazyResource<GameplayOverlayRenderer>()
+
+    /// Overlay resource builds so far (0 while it was never enabled).
+    public var overlayBuildCount: Int { overlay.buildCount }
+    /// Frames the overlay has actually drawn.
+    public var overlayPassCount: Int { overlay.value?.passCount ?? 0 }
 
     /// Sprites are drawn in this order; layers are sorted bottom to top.
     private var drawOrder: [PreparedSprite] = []
@@ -175,6 +190,7 @@ public final class MetalStoryboardRenderer {
 
     public init(device: MTLDevice, pixelFormat: MTLPixelFormat) throws {
         self.device = device
+        self.pixelFormat = pixelFormat
 
         guard let queue = device.makeCommandQueue() else {
             throw RendererError.commandQueueCreationFailed
@@ -419,9 +435,33 @@ public final class MetalStoryboardRenderer {
         else { return }
 
         render(at: time, into: descriptor, visible: visibleArea) { commandBuffer in
+            encodeGameplay(at: time, into: commandBuffer, target: drawable.texture)
             commandBuffer.present(drawable)
             commandBuffer.commit()
         }
+    }
+
+    /// The editor's gameplay overlay, over the storyboard just encoded. Off, it
+    /// costs a nil check: no resources, no pass.
+    private func encodeGameplay(at time: Double, into commandBuffer: MTLCommandBuffer, target: MTLTexture) {
+        guard let gameplay else {
+            overlay.value?.releaseTargets()
+            return
+        }
+        let device = device
+        let pixelFormat = pixelFormat
+        guard let renderer = overlay.acquire({ try GameplayOverlayRenderer(device: device, drawablePixelFormat: pixelFormat) })
+        else { return }
+        renderer.encode(
+            into: commandBuffer,
+            frame: GameplayFrame.build(gameplay, at: time),
+            map: gameplay,
+            time: time,
+            target: target,
+            projection: Self.projectionMatrix(widescreen: isWidescreen, visible: visibleArea),
+            widescreen: isWidescreen,
+            frameSlot: frameIndex,
+        )
     }
 
     /// Draws one frame into a texture, for anything that is not a screen.

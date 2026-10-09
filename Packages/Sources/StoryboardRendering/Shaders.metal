@@ -16,6 +16,8 @@ using namespace metal;
 typedef enum BufferIndex {
     BufferIndexInstances = 0,
     BufferIndexUniforms  = 1,
+    BufferIndexOverlayInstances = 2,
+    BufferIndexSliderVertices = 3,
 } BufferIndex;
 
 struct Uniforms {
@@ -30,6 +32,35 @@ struct SpriteInstance {
     uint textureIndex;
     float4 color;
     float4 uvRect;
+};
+
+// Gameplay overlay (editor only). Mirrors of the ShaderTypes.h structs of the
+// same names; ShaderLayoutTests / OverlayShaderLayoutTests keep them in step.
+
+struct OverlayQuadInstance {
+    float2 position;
+    float radius;
+    float alpha;
+    float4 color;
+    float angle;
+    float progress;
+    uint kind;
+};
+
+struct SliderVertex {
+    float x;
+    float y;
+    float distance;
+};
+
+struct OverlayDrawUniforms {
+    float4x4 projection;
+    float4 color;
+    float4 border;
+    float slotDepth;
+    float slabSize;
+    float borderWidth;
+    float alpha;
 };
 
 struct RasterizerData {
@@ -130,4 +161,152 @@ fragment float4 spriteFragment(
 fragment float4 spriteFragmentUntextured(RasterizerData in [[stage_in]])
 {
     return float4(in.color.rgb * in.color.a, in.color.a);
+}
+
+// ─── Gameplay overlay ────────────────────────────────────────────────────────
+//
+// Drawn into its own offscreen colour + depth targets and composited over the
+// storyboard afterwards, so none of it can reach the storyboard pass.
+
+constant uint kOverlayKindCircle = 0;
+constant uint kOverlayKindApproach = 1;
+constant uint kOverlayKindReverseArrow = 2;
+constant uint kOverlayKindBall = 3;
+constant uint kOverlayKindSpinner = 4;
+
+/// How far past the radius the quad reaches, so the antialiased edge is not cut.
+constant float kOverlayMargin = 1.15;
+
+struct OverlayRaster {
+    float4 position [[position]];
+    float2 local;
+    float4 color [[flat]];
+    float alpha [[flat]];
+    float angle [[flat]];
+    float progress [[flat]];
+    uint kind [[flat]];
+};
+
+vertex OverlayRaster overlayQuadVertex(
+    uint vertexID [[vertex_id]],
+    uint instanceID [[instance_id]],
+    constant OverlayQuadInstance *instances [[buffer(BufferIndexOverlayInstances)]],
+    constant OverlayDrawUniforms &uniforms [[buffer(BufferIndexUniforms)]])
+{
+    const OverlayQuadInstance shape = instances[instanceID];
+    const float2 unit = kQuadCorners[kTriangleIndices[vertexID]];
+
+    OverlayRaster out;
+    out.local = unit * kOverlayMargin;
+    out.position = uniforms.projection * float4(shape.position + out.local * shape.radius, 0.0, 1.0);
+    out.color = shape.color;
+    out.alpha = shape.alpha;
+    out.angle = shape.angle;
+    out.progress = shape.progress;
+    out.kind = shape.kind;
+    return out;
+}
+
+/// Coverage of a signed distance: 1 inside, 0 outside, one pixel of blend.
+static float overlayCoverage(float distance, float pixel)
+{
+    return clamp(0.5 - distance / pixel, 0.0, 1.0);
+}
+
+fragment float4 overlayQuadFragment(OverlayRaster in [[stage_in]])
+{
+    // One pixel in local units (the radius is 1), for antialiasing.
+    const float pixel = max(fwidth(in.local.x), 1e-4);
+    const float d = length(in.local);
+    float coverage = 0.0;
+    float3 rgb = in.color.rgb;
+
+    if (in.kind == kOverlayKindCircle || in.kind == kOverlayKindBall) {
+        // A body with a white ring on its rim.
+        coverage = overlayCoverage(d - 1.0, pixel);
+        const float ring = overlayCoverage(0.86 - d, pixel);
+        rgb = mix(float3(1.0), in.color.rgb, ring);
+    } else if (in.kind == kOverlayKindApproach) {
+        // A thin ring; its thickness scales with it, as it does in osu!.
+        coverage = overlayCoverage(abs(d - 0.97) - 0.03, pixel);
+    } else if (in.kind == kOverlayKindReverseArrow) {
+        // Rotate into the arrow's frame: it points along +x there.
+        const float c = cos(in.angle);
+        const float s = sin(in.angle);
+        const float2 p = float2(c * in.local.x + s * in.local.y, -s * in.local.x + c * in.local.y);
+        // Triangle (0.5, 0), (-0.4, +-0.45) as the max of its half-planes.
+        const float2 normal = normalize(float2(0.45, 0.9));
+        const float edge = max(-p.x - 0.4, dot(float2(p.x - 0.5, abs(p.y)), normal));
+        coverage = overlayCoverage(edge, pixel);
+    } else {
+        // Spinner: a faint full ring and the progress arc swept clockwise from
+        // the top.
+        const float ring = overlayCoverage(abs(d - 0.95) - 0.05, pixel);
+        const float turn = fract(atan2(in.local.x, -in.local.y) / (2.0 * M_PI_F));
+        const float swept = step(turn, in.progress);
+        coverage = ring * mix(0.35, 1.0, swept);
+    }
+
+    const float a = coverage * in.alpha;
+    return float4(rgb * a, a);
+}
+
+// Slider bodies. The vertex stage is shared by the depth-only prepass and the
+// colour pass, and its position is [[invariant]] so both produce the very same
+// depth: the colour pass depth-tests `equal` against what the prepass wrote.
+
+struct SliderRaster {
+    float4 position [[position, invariant]];
+    float distance;
+};
+
+vertex SliderRaster sliderBodyVertex(
+    uint vertexID [[vertex_id]],
+    constant SliderVertex *vertices [[buffer(BufferIndexSliderVertices)]],
+    constant OverlayDrawUniforms &uniforms [[buffer(BufferIndexUniforms)]])
+{
+    const SliderVertex v = vertices[vertexID];
+    float4 clip = uniforms.projection * float4(v.x, v.y, 0.0, 1.0);
+    // Distance as depth: the centreline is nearest inside this object's slab.
+    clip.z = uniforms.slotDepth + v.distance * uniforms.slabSize;
+
+    SliderRaster out;
+    out.position = clip;
+    out.distance = v.distance;
+    return out;
+}
+
+fragment float4 sliderBodyFragment(
+    SliderRaster in [[stage_in]],
+    constant OverlayDrawUniforms &uniforms [[buffer(BufferIndexUniforms)]])
+{
+    // Border from the rim inwards, with a short blend so it is not a stair.
+    const float edge = 1.0 - uniforms.borderWidth;
+    const float onBorder = smoothstep(edge - 0.03, edge, in.distance);
+    const float3 rgb = mix(uniforms.color.rgb, uniforms.border.rgb, onBorder);
+    const float a = uniforms.alpha;
+    return float4(rgb * a, a);
+}
+
+// Composite: the overlay target laid over the drawable, premultiplied.
+
+struct CompositeRaster {
+    float4 position [[position]];
+};
+
+vertex CompositeRaster compositeVertex(uint vertexID [[vertex_id]])
+{
+    // One oversized triangle covers the whole target.
+    const float2 corners[3] = { float2(-1.0, -1.0), float2(3.0, -1.0), float2(-1.0, 3.0) };
+    CompositeRaster out;
+    out.position = float4(corners[vertexID], 0.0, 1.0);
+    return out;
+}
+
+fragment float4 compositeFragment(
+    CompositeRaster in [[stage_in]],
+    texture2d<float, access::read> overlay [[texture(0)]])
+{
+    // Same size as the drawable, so a pixel read is exact: no filtering.
+    return overlay.read(uint2(in.position.xy));
 }

@@ -59,12 +59,18 @@ jobs:
       #                                                pixels back off the GPU.
       #   ShaderLayoutTests — compiles Shaders.metal to check every entry point
       #                       still exists.
+      #   GameplayOverlayRenderTests — draws the editor's gameplay overlay on
+      #                       the GPU and reads its pixels back. Its logic
+      #                       (plan, depth slabs, projection, layouts, the
+      #                       editor-only boundary) lives in GPU-free suites
+      #                       that DO run here.
       - name: Test
         run: |
           swift test --package-path Packages \
             --skip TextureDecodingTests \
             --skip BuiltInTextureTests \
-            --skip ShaderLayoutTests
+            --skip ShaderLayoutTests \
+            --skip GameplayOverlayRenderTests
 
       # The skipped suites still have to COMPILE. Without this, code behind a
       # skip is free to stop building and nothing would say so until someone

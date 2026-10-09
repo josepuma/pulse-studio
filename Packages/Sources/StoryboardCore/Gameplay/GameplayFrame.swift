@@ -9,6 +9,11 @@ public struct ObjectVisual: Sendable, Equatable {
         public var position: PlayfieldPoint
         /// Radians in storyboard space, pointing the way the ball will go back.
         public var angle: Double
+
+        public init(position: PlayfieldPoint, angle: Double) {
+            self.position = position
+            self.angle = angle
+        }
     }
 
     /// Position of the object in `GameplayMap.objects`.
@@ -29,6 +34,24 @@ public struct ObjectVisual: Sendable, Equatable {
     public var reverseArrows: [ReverseArrow]
     /// 0...1 over a spinner's life; `nil` for other kinds.
     public var spinnerProgress: Double?
+
+    public init(
+        objectIndex: Int, kind: Kind, position: PlayfieldPoint, radius: Double, alpha: Double,
+        approachScale: Double, approachAlpha: Double, comboNumber: Int,
+        ball: PlayfieldPoint? = nil, reverseArrows: [ReverseArrow] = [], spinnerProgress: Double? = nil,
+    ) {
+        self.objectIndex = objectIndex
+        self.kind = kind
+        self.position = position
+        self.radius = radius
+        self.alpha = alpha
+        self.approachScale = approachScale
+        self.approachAlpha = approachAlpha
+        self.comboNumber = comboNumber
+        self.ball = ball
+        self.reverseArrows = reverseArrows
+        self.spinnerProgress = spinnerProgress
+    }
 }
 
 /// Turns a map and a time into the objects on screen, latest first.
