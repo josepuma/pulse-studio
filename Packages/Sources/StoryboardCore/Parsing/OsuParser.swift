@@ -91,33 +91,23 @@ public enum OsuParser {
 
     // ─── Sections ────────────────────────────────────────────────────────────
 
-    /// `time,beatLength,meter,sampleSet,sampleIndex,volume,uninherited,effects`
     private static func parseTimingPoint(
         _ line: String,
         into uninherited: inout [UninheritedTimingPoint],
         all: inout [(time: Double, kiai: Bool)],
     ) {
-        let parts = line.split(separator: ",", omittingEmptySubsequences: false).map { $0.trimmed() }
-        guard parts.count >= 2 else { return }
+        guard let point = TimingPointLine.parse(line) else { return }
 
-        let time = (Double(parts[0]) ?? 0).rounded()
-        let beatLength = Double(parts[1]) ?? 0
-        let meter = parts.count > 2 ? (Int(parts[2]) ?? 4) : 4
-        // The uninherited flag defaults to 1 when absent, matching older files.
-        let isUninherited = parts.count > 6 ? (Int(parts[6]) ?? 1) == 1 : true
-        let effects = parts.count > 7 ? (Int(parts[7]) ?? 0) : 0
-        let kiai = effects & 1 == 1
-
-        all.append((time: time, kiai: kiai))
+        all.append((time: point.time, kiai: point.kiai))
 
         // A green point carries a negative beatLength: a slider multiplier,
         // not a tempo.
-        if isUninherited, beatLength > 0 {
+        if point.isUninherited, point.beatLength > 0 {
             uninherited.append(UninheritedTimingPoint(
-                time: time,
-                beatLength: beatLength,
-                meter: meter == 0 ? 4 : meter,
-                kiai: kiai,
+                time: point.time,
+                beatLength: point.beatLength,
+                meter: point.meter == 0 ? 4 : point.meter,
+                kiai: point.kiai,
             ))
         }
     }
