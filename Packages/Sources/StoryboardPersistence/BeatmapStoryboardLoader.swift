@@ -8,6 +8,15 @@ import StoryboardCore
 /// difficulty's events are laid on top of it — which is what osu! shows, since
 /// only one difficulty is ever played at a time.
 public enum BeatmapStoryboardLoader {
+    /// A readable difficulty (`.osu`) of the folder.
+    public struct DifficultyFile: Sendable, Equatable {
+        /// Relative path inside the folder.
+        public let path: String
+        /// `[Metadata] Version`, or the file name without extension when the
+        /// file does not name one.
+        public let version: String
+    }
+
     public struct Result: Sendable {
         /// Sprites ready for resolution, in draw order.
         public let sprites: [StoryboardSprite]
@@ -22,6 +31,19 @@ public enum BeatmapStoryboardLoader {
         public let timing: BeatmapTimingData?
         /// The beatmap's audio file, resolved against the folder.
         public let audioURL: URL?
+
+        /// Every readable difficulty, in loader order. Only listed here: nothing
+        /// of their hit objects is parsed at load time.
+        public let difficulties: [DifficultyFile]
+        /// The difficulty `timing` came from: the first readable one, and the
+        /// default for anything that needs "a" difficulty.
+        public let timingOsuPath: String?
+
+        /// `"<version> (timing)"` for the default difficulty, so a UI can say
+        /// why it is the preselected one.
+        public var timingDifficultyName: String? {
+            difficulties.first { $0.path == timingOsuPath }.map { "\($0.version) (timing)" }
+        }
 
         public var spriteCount: Int { sprites.count }
     }
@@ -41,16 +63,26 @@ public enum BeatmapStoryboardLoader {
 
         var contributingOsuPaths: [String] = []
         var timing: BeatmapTimingData?
+        var timingOsuPath: String?
+        var difficulties: [DifficultyFile] = []
 
         for osuPath in folder.files(withExtensions: ["osu"]) {
             guard let source = readText(at: osuPath, in: folder) else { continue }
 
             // Difficulties of one beatmap share their audio and tempo, so the
             // first readable file settles both.
-            if timing == nil {
-                let parsed = OsuParser.parse(source)
-                if !parsed.audioFilename.isEmpty || !parsed.uninheritedPoints.isEmpty {
+            // The same test decides what counts as a readable difficulty, so
+            // the list's first entry IS the timing source.
+            let parsed = OsuParser.parse(source)
+            if !parsed.audioFilename.isEmpty || !parsed.uninheritedPoints.isEmpty {
+                let version = parsed.metadata.version
+                difficulties.append(DifficultyFile(
+                    path: osuPath,
+                    version: version.isEmpty ? Self.fileStem(osuPath) : version,
+                ))
+                if timing == nil {
                     timing = parsed
+                    timingOsuPath = osuPath
                 }
             }
 
@@ -108,7 +140,15 @@ public enum BeatmapStoryboardLoader {
             missingImagePaths: missing,
             timing: timing,
             audioURL: audioURL,
+            difficulties: difficulties,
+            timingOsuPath: timingOsuPath,
         )
+    }
+
+    private static func fileStem(_ path: String) -> String {
+        let name = path.split(separator: "/").last.map(String.init) ?? path
+        guard let dot = name.lastIndex(of: ".") else { return name }
+        return String(name[..<dot])
     }
 
     /// Audio file extensions a beatmap folder may use.
