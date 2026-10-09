@@ -24,12 +24,14 @@ public struct SliderMeshVertex: Sendable, Equatable {
 public enum SliderMesh {
     public static let defaultMaxVertices = 60_000
 
-    /// Angle covered by one wedge of a fan.
-    private static let wedge = Double.pi / 8
-    private static let capWedges = 16
+    /// Angle covered by one wedge of a fan. The border is drawn along the chords
+    /// between rim vertices, so at π/8 the tail cap read as a polygon next to
+    /// osu!; π/32 keeps the chords within about a screen pixel at 400% zoom.
+    private static let wedge = Double.pi / 32
+    private static let capWedges = 64
     // Worst case per path vertex: two half-quads per segment (12) plus a
-    // joint of up to eight wedges (24).
-    private static let verticesPerPathPoint = 36
+    // joint of up to 32 wedges (96).
+    private static let verticesPerPathPoint = 108
     private static let capVertices = 2 * capWedges * 3
 
     /// - Parameter translatedBy: added to every vertex, so the caller can hand

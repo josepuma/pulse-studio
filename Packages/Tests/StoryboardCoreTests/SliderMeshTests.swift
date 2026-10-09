@@ -52,6 +52,24 @@ struct SliderMeshTests {
         #expect(mesh.map { Double($0.x) }.max()! > 100 + Self.radius - 1)
     }
 
+    // The border follows the chords between rim vertices, so a coarse fan reads
+    // as a polygon on the tail cap (reported side by side against osu!). On the
+    // capture's 4.26 px per storyboard px at 400% canvas zoom, 0.07 osu!px of
+    // sagitta is about one screen pixel, at the largest radius a map can ask for.
+    @Test("a cap's rim stays within a screen pixel of a true circle")
+    func capIsRound() throws {
+        let radius = BeatmapDifficultyMath.radius(cs: 0)
+        let mesh = SliderMesh.build(straight(), radius: radius, maxVertices: SliderMesh.defaultMaxVertices)
+        let angles = mesh
+            .filter { $0.d == 1 && Double($0.x) > 100 + 1e-6 }
+            .map { atan2(Double($0.y), Double($0.x) - 100) }
+        let sorted = Array(Set(angles)).sorted()
+        try #require(sorted.count > 2)
+        let widestStep = zip(sorted, sorted.dropFirst()).map { $1 - $0 }.max() ?? .pi
+        let sagitta = radius * (1 - cos(widestStep / 2))
+        #expect(sagitta <= 0.07)
+    }
+
     @Test("a pathological slider stays under the vertex cap without NaN (S1.7b)")
     func pathological() {
         var pts: [PlayfieldPoint] = []
