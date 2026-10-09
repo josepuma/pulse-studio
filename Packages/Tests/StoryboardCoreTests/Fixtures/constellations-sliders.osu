@@ -1,0 +1,32 @@
+osu file format v14
+
+// EXCERPT, not a full beatmap. Source: "Redside feat. Hatsune Miku -
+// Constellations (The Cube) [8].osu" (third-party map, a few lines kept only
+// as slider-geometry fixtures; the rest of the file is deliberately absent).
+// Lines kept: perfect circles (one nearly collinear), bezier with repeated
+// (red) anchors, a linear slider whose pixelLength is shorter than its control
+// path, and sliders with repeats.
+
+[Difficulty]
+HPDrainRate:4
+CircleSize:4
+OverallDifficulty:9.8
+ApproachRate:9.8
+SliderMultiplier:2.4
+SliderTickRate:1
+
+[TimingPoints]
+2728,342.857142857143,4,2,0,45,1,0
+2728,-200,4,2,0,45,0,0
+14385,-153.846153846154,4,2,0,45,0,0
+
+[HitObjects]
+107,179,2728,6,0,B|77:170|77:170|68:90|123:42|123:42|47:63|8:178|78:246,1,420,8|0,0:3|0:0,0:0:0:0:
+190,174,4099,6,0,P|240:205|314:217,1,120,2|0,0:1|0:0,0:0:0:0:
+378,329,5128,2,0,P|371:299|359:272,1,60,2|0,0:1|0:0,0:0:0:0:
+201,206,8728,2,0,L|272:210,1,60,2|0,0:0|0:0,0:0:0:0:
+389,177,9242,2,0,L|460:181,2,60,2|0|0,0:0|0:0|0:0,0:0:0:0:
+413,267,10956,6,0,B|465:206|414:140|414:140|380:168,1,180,2|0,0:1|0:0,0:0:0:0:
+512,220,12327,6,0,B|500:188|500:188|468:182,1,60,2|0,0:1|0:0,0:0:0:0:
+256,0,32899,6,2,B|256:192|64:192|64:192|256:192|256:384|256:384|256:192|448:192|448:192|256:192|256:0,2,1170.00006973744,6|0|6,1:0|1:0|1:0,1:0:0:0:
+77,171,78156,6,0,L|74:122,3,35.9999982833863,0|2|2|2,1:0|0:0|0:0|0:0,0:0:0:0:
