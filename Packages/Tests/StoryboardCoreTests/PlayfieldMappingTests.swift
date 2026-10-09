@@ -3,21 +3,36 @@ import Testing
 
 @testable import StoryboardCore
 
-/// OPEN (pending the user's osu! stable capture, task 3.1): `verticalOffset`
-/// is PROVISIONAL (0). These tests pin only the verified baseline, the
-/// (64, 48) centring of a 512x384 playfield inside the 640x480 storyboard
-/// space. They deliberately do NOT assert that 0 is osu!'s true vertical
-/// offset, and there is no pinned-capture test yet.
+/// The vertical offset is pinned against a real osu! stable capture of
+/// Constellations [8] at ~163.9 s: fitting six circle centres gave a uniform
+/// scale, x centred (origin x 64 within ~1.3 px) and origin y of about
+/// 57 storyboard px, i.e. +9 +/-1.5 over the 48 baseline. 8 is the commonly
+/// cited value and is consistent with that measurement.
 @Suite("Playfield mapping")
 struct PlayfieldMappingTests {
     @Test("the playfield corners land on the centred 640x480 baseline (S1.9a)")
     func baseline() {
         let topLeft = PlayfieldMapping.storyboard(PlayfieldPoint(x: 0, y: 0))
         let bottomRight = PlayfieldMapping.storyboard(PlayfieldPoint(x: 512, y: 384))
-        // The vertical term is whatever the provisional constant says, so the
+        // The vertical term is whatever the named constant says, so the
         // expectation is written in terms of it instead of a magic number.
         #expect(topLeft == PlayfieldPoint(x: 64, y: 48 + PlayfieldMapping.verticalOffset))
         #expect(bottomRight == PlayfieldPoint(x: 576, y: 432 + PlayfieldMapping.verticalOffset))
+    }
+
+    @Test("the vertical offset is 8 and real captured objects land where stable drew them (S1.9b)")
+    func pinnedToCapture() {
+        #expect(PlayfieldMapping.verticalOffset == 8)
+        // Measured storyboard positions of two real objects in the capture.
+        let samples: [(PlayfieldPoint, PlayfieldPoint)] = [
+            (PlayfieldPoint(x: 308, y: 228), PlayfieldPoint(x: 373.3, y: 285.3)),
+            (PlayfieldPoint(x: 393, y: 134), PlayfieldPoint(x: 457, y: 191.2)),
+        ]
+        for (playfield, measured) in samples {
+            let mapped = PlayfieldMapping.storyboard(playfield)
+            #expect(abs(mapped.x - measured.x) <= 2)
+            #expect(abs(mapped.y - measured.y) <= 2)
+        }
     }
 
     @Test("the playfield is centred horizontally in 640 and its scale is 1")

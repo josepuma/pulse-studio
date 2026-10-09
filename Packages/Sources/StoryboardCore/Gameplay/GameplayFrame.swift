@@ -39,8 +39,8 @@ public enum GameplayFrame {
     private static let timeLimit: Double = 1e8
 
     /// Latest object first: osu! draws earlier objects on top of later ones,
-    /// so painting back to front means the earliest lands last. UNVERIFIED
-    /// against a stable capture (task 3.1 is still open).
+    /// so painting back to front means the earliest lands last. Confirmed on a
+    /// stable capture (combo 1 over 2, 3 over 4).
     public static func build(_ map: GameplayMap, at time: Double) -> [ObjectVisual] {
         guard time.isFinite, abs(time) <= timeLimit else { return [] }
         return map.index.candidates(at: time).reversed().map { visual(map, map.objects[$0], at: time) }

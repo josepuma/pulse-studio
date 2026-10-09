@@ -11,18 +11,18 @@ public enum PlayfieldMapping {
 
     /// Extra vertical shift on top of the centring.
     ///
-    /// PROVISIONAL AND UNVERIFIED: 0 is the neutral placeholder, not a
-    /// measurement. It must be settled against a real osu! stable capture
-    /// (task 3.1, pending) and then pinned by a test whose expected value
-    /// comes from that capture. Until then nothing may claim it is osu!'s.
-    public static let verticalOffset: Double = 0
+    /// Measured from a real osu! stable capture (Constellations [8], ~163.9 s):
+    /// fitting six circle centres gave +9 +/-1.5 over the 48 baseline. 8 is the
+    /// value consistent with that and the commonly cited one. Pinned by
+    /// `PlayfieldMappingTests.pinnedToCapture`.
+    public static let verticalOffset: Double = 8
 
     /// What the wide (854x480) canvas adds to a storyboard x. Mirrors
     /// `OsuCanvas.xOffset` (a Rendering test cross-checks them): Core cannot
     /// import the renderer.
     public static let wideCanvasXOffset: Double = 107
 
-    /// The whole translation, centring plus the (provisional) vertical term.
+    /// The whole translation, centring plus the vertical term.
     public static var offset: PlayfieldPoint {
         PlayfieldPoint(x: origin.x, y: origin.y + verticalOffset)
     }
