@@ -14,11 +14,12 @@ struct OverlayPlanTests {
         _ index: Int, kind: ObjectVisual.Kind = .circle, x: Double = 100, y: Double = 100,
         alpha: Double = 1, approachScale: Double = 1, approachAlpha: Double = 0,
         ball: PlayfieldPoint? = nil, arrows: [ObjectVisual.ReverseArrow] = [], progress: Double? = nil,
+        colour: ComboColour = ComboColour.defaults[0],
     ) -> ObjectVisual {
         ObjectVisual(
             objectIndex: index, kind: kind, position: PlayfieldPoint(x: x, y: y), radius: 40,
             alpha: alpha, approachScale: approachScale, approachAlpha: approachAlpha, comboNumber: 1,
-            ball: ball, reverseArrows: arrows, spinnerProgress: progress,
+            ball: ball, reverseArrows: arrows, spinnerProgress: progress, comboColour: colour,
         )
     }
 
@@ -102,6 +103,33 @@ struct OverlayPlanTests {
         #expect(values.bodyOpacity == Float(GameplayOverlayStyle.bodyOpacity))
         #expect(values.innerColor != values.color, "the body needs a centreline darker than its rim")
         #expect(values.borderWidth == 0.128)
+    }
+
+    @Test("objects of different combos get different colours, divided by 255 with no linearising")
+    func comboColours() throws {
+        let yellow = ComboColour(r: 246, g: 214, b: 122)
+        let blue = ComboColour(r: 52, g: 87, b: 194)
+        let plan = OverlayPlan.build([
+            visual(1, kind: .slider, colour: blue),
+            visual(0, colour: yellow),
+        ])
+
+        let slider = try #require(plan.objects.first)
+        let circle = try #require(plan.objects.last)
+        let circleInstance = plan.instances[circle.instances.lowerBound]
+        let sliderHead = plan.instances[slider.instances.lowerBound]
+
+        #expect(circleInstance.color == SIMD4<Float>(246.0 / 255, 214.0 / 255, 122.0 / 255, 1))
+        #expect(sliderHead.color == SIMD4<Float>(52.0 / 255, 87.0 / 255, 194.0 / 255, 1))
+        #expect(circleInstance.color != sliderHead.color)
+
+        // The slider body is drawn with ITS combo's colour, the centreline darker.
+        let uniforms = plan.uniforms(for: slider, projection: matrix_identity_float4x4)
+        #expect(uniforms.color == sliderHead.color)
+        let shade = GameplayOverlayStyle.innerShade
+        #expect(uniforms.innerColor == SIMD4<Float>(52.0 / 255 * shade, 87.0 / 255 * shade, 194.0 / 255 * shade, 1))
+        // The border stays white.
+        #expect(uniforms.border == SIMD4<Float>(1, 1, 1, 1))
     }
 
     @Test("a spinner carries its progress")

@@ -82,6 +82,10 @@ public struct HitObject: Sendable, Equatable {
     public var comboSkip: Int
     /// 1-based index inside the combo, the number osu! draws on the circle.
     public var comboNumber: Int
+    /// `ComboIndexWithOffsets` of osu!lazer's `IHasComboInformation`: 1 for the
+    /// first object, then `+ comboSkip + 1` on every new combo. The palette is
+    /// indexed with it (see ``ComboColour/pick(from:indexWithOffsets:)``).
+    public var comboIndexWithOffsets: Int
     public var kind: Kind
 
     public init(
@@ -90,6 +94,7 @@ public struct HitObject: Sendable, Equatable {
         newCombo: Bool = false,
         comboSkip: Int = 0,
         comboNumber: Int = 1,
+        comboIndexWithOffsets: Int = 1,
         kind: Kind,
     ) {
         self.time = time
@@ -97,7 +102,48 @@ public struct HitObject: Sendable, Equatable {
         self.newCombo = newCombo
         self.comboSkip = comboSkip
         self.comboNumber = comboNumber
+        self.comboIndexWithOffsets = comboIndexWithOffsets
         self.kind = kind
+    }
+}
+
+/// A combo colour as the `.osu` writes it: 0-255 channels, used as-is (the
+/// overlay composes in gamma space, like the rest of the renderer).
+public struct ComboColour: Sendable, Equatable {
+    public var r: UInt8
+    public var g: UInt8
+    public var b: UInt8
+
+    public init(r: UInt8, g: UInt8, b: UInt8) {
+        self.r = r
+        self.g = g
+        self.b = b
+    }
+
+    /// osu!'s `SkinConfiguration.DefaultComboColours`, used when the map has no
+    /// `[Colours]` combo entry (checked against ppy/osu master).
+    public static let defaults: [ComboColour] = [
+        ComboColour(r: 255, g: 192, b: 0),
+        ComboColour(r: 0, g: 202, b: 0),
+        ComboColour(r: 18, g: 124, b: 255),
+        ComboColour(r: 242, g: 24, b: 57),
+    ]
+
+    /// Combo1 ... Combo8 is the most osu! reads.
+    public static let maxCombos = 8
+
+    /// The colour of an object. osu!lazer picks the beatmap colour with
+    /// `ComboIndexWithOffsets` (`LegacyBeatmapSkin.GetComboColour`); the editor's
+    /// mapping is `(index + count - 1) % count`, so the first object (index 1)
+    /// gets Combo1. An empty palette falls back to the defaults.
+    public static func pick(from palette: [ComboColour], indexWithOffsets: Int) -> ComboColour {
+        let colours = palette.isEmpty ? defaults : palette
+        let count = colours.count
+        // `Int.min` and friends cannot occur from the parser, but a hand-made
+        // object could carry them: a floor-mod never indexes out of range.
+        // Reduced BEFORE the -1: `Int.min - 1` would trap.
+        let position = ((indexWithOffsets % count) + count - 1) % count
+        return colours[position]
     }
 }
 
@@ -109,10 +155,22 @@ public struct BeatmapGameplay: Sendable, Equatable {
     public var difficulty: BeatmapDifficulty
     public var controlPoints: ControlPoints
     public var hitObjects: [HitObject]
+    /// `[Colours]` Combo1...8 in order; the osu! defaults when the map has none.
+    public var comboColours: [ComboColour]
 
-    public init(difficulty: BeatmapDifficulty, controlPoints: ControlPoints, hitObjects: [HitObject]) {
+    public init(
+        difficulty: BeatmapDifficulty,
+        controlPoints: ControlPoints,
+        hitObjects: [HitObject],
+        comboColours: [ComboColour] = ComboColour.defaults,
+    ) {
         self.difficulty = difficulty
         self.controlPoints = controlPoints
         self.hitObjects = hitObjects
+        self.comboColours = comboColours
+    }
+
+    public func comboColour(for object: HitObject) -> ComboColour {
+        ComboColour.pick(from: comboColours, indexWithOffsets: object.comboIndexWithOffsets)
     }
 }

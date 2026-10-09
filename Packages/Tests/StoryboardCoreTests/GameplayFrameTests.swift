@@ -29,6 +29,25 @@ struct GameplayFrameTests {
         #expect(GameplayFrame.build(m, at: 1000 + GameplayMap.fadeOut + 1).isEmpty)
     }
 
+    @Test("a visual carries the map's colour for its combo")
+    func comboColour() throws {
+        let palette = [ComboColour(r: 1, g: 2, b: 3), ComboColour(r: 4, g: 5, b: 6)]
+        var first = GameplayFixture.circle(at: 1000)
+        first.comboIndexWithOffsets = 1
+        var second = GameplayFixture.circle(at: 1010)
+        second.comboIndexWithOffsets = 2
+        let gameplay = BeatmapGameplay(
+            difficulty: BeatmapDifficulty(), controlPoints: ControlPoints(red: [GameplayFixture.red], green: []),
+            hitObjects: [first, second], comboColours: palette,
+        )
+
+        let frame = GameplayFrame.build(GameplayMap(gameplay), at: 1010)
+        let byIndex = Dictionary(uniqueKeysWithValues: frame.map { ($0.objectIndex, $0.comboColour) })
+
+        #expect(byIndex[0] == palette[0])
+        #expect(byIndex[1] == palette[1])
+    }
+
     @Test("fade-in follows the difficulty rule")
     func fadeIn() throws {
         let m = map(ar: 9, [GameplayFixture.circle(at: 1000)])

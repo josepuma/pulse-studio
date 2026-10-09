@@ -20,6 +20,7 @@ public enum OsuGameplayParser {
         var red: [UninheritedTimingPoint] = []
         var green: [InheritedPoint] = []
         var objects: [HitObject] = []
+        var colours: [Int: ComboColour] = [:]
 
         for rawLine in source.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
             let line = rawLine.trimmed()
@@ -42,6 +43,9 @@ public enum OsuGameplayParser {
             case "[TimingPoints]":
                 parseControlPoint(line, red: &red, green: &green)
 
+            case "[Colours]":
+                parseColour(line, into: &colours)
+
             case "[HitObjects]":
                 guard objects.count < maxHitObjects else { continue }
                 if let object = parseHitObject(line) { objects.append(object) }
@@ -58,7 +62,35 @@ public enum OsuGameplayParser {
                 green: stableSorted(green) { $0.time < $1.time },
             ),
             hitObjects: numbered(stableSorted(objects) { $0.time < $1.time }),
+            comboColours: colours.isEmpty
+                ? ComboColour.defaults
+                : colours.sorted { $0.key < $1.key }.map(\.value),
         )
+    }
+
+    // ─── Colours ─────────────────────────────────────────────────────────────
+
+    /// `Combo3 : 120,193,232`. Other keys (SliderBorder, SliderTrackOverride...)
+    /// are ignored: the border stays white.
+    private static func parseColour(_ line: String, into colours: inout [Int: ComboColour]) {
+        guard let colon = line.firstIndex(of: ":") else { return }
+        let key = String(line[line.startIndex..<colon]).trimmed()
+        guard key.hasPrefix("Combo"), let number = Int(key.dropFirst(5)),
+              (1...ComboColour.maxCombos).contains(number)
+        else { return }
+
+        let channels = String(line[line.index(after: colon)...])
+            .split(separator: ",", omittingEmptySubsequences: false)
+            .map { $0.trimmed() }
+        // `r,g,b`, or `r,g,b,a` (the alpha is not used).
+        guard channels.count == 3 || channels.count == 4 else { return }
+        var bytes: [UInt8] = []
+        for channel in channels.prefix(3) {
+            // Finite BEFORE the conversion: UInt8(.nan) traps.
+            guard let value = finite(channel) else { return }
+            bytes.append(UInt8(min(max(value.rounded(), 0), 255)))
+        }
+        colours[number] = ComboColour(r: bytes[0], g: bytes[1], b: bytes[2])
     }
 
     // ─── Difficulty ──────────────────────────────────────────────────────────
@@ -189,12 +221,24 @@ public enum OsuGameplayParser {
     }
 
     /// Combo numbers follow the time-sorted order, the one the player sees.
+    ///
+    /// The colour index follows osu!lazer's `IHasComboInformation.UpdateComboInformation`:
+    /// `index = last?.ComboIndexWithOffsets ?? 0`, and on a new combo (or the
+    /// first object) `index += ComboOffset + 1`, ComboOffset being the skip bits.
     private static func numbered(_ objects: [HitObject]) -> [HitObject] {
         var result = objects
         var number = 0
+        var colourIndex = 0
         var forceNew = false
         for index in result.indices {
-            if result[index].newCombo || forceNew || index == 0 { number = 1 } else { number += 1 }
+            let startsCombo = result[index].newCombo || forceNew || index == 0
+            if startsCombo {
+                number = 1
+                colourIndex += result[index].comboSkip + 1
+            } else {
+                number += 1
+            }
+            result[index].comboIndexWithOffsets = colourIndex
             result[index].comboNumber = number
             // osu! starts a new combo on whatever follows a spinner.
             if case .spinner = result[index].kind { forceNew = true } else { forceNew = false }

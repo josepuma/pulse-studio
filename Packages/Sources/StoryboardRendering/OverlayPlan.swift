@@ -18,6 +18,9 @@ struct OverlayPlan {
         var isSlider: Bool
         /// Fade alpha of the object (its border is drawn at this; bodies scale it).
         var alpha: Float
+        /// The slider body at the rim, and at the centreline (the map's combo colour).
+        var color: SIMD4<Float>
+        var innerColor: SIMD4<Float>
         /// This object's quads: head, ball, arrows.
         var instances: Range<Int>
     }
@@ -36,9 +39,9 @@ struct OverlayPlan {
         let slab = OverlayDepth.slab(slot: object?.slot ?? 0, count: slotCount)
         return OverlayDrawUniforms(
             projection: projection,
-            color: GameplayOverlayStyle.sliderColor,
+            color: object?.color ?? GameplayOverlayStyle.sliderColor,
             border: GameplayOverlayStyle.borderColor,
-            innerColor: GameplayOverlayStyle.sliderInnerColor,
+            innerColor: object?.innerColor ?? GameplayOverlayStyle.sliderInnerColor,
             slotDepth: slab.base,
             slabSize: slab.size,
             borderWidth: GameplayOverlayStyle.sliderBorderWidth,
@@ -60,6 +63,7 @@ struct OverlayPlan {
             else { continue }
 
             let start = plan.instances.count
+            let comboColor = GameplayOverlayStyle.tint(visual.comboColour)
             let centre = SIMD2<Float>(Float(visual.position.x), Float(visual.position.y))
             func quad(
                 _ kind: OverlayKind, at point: SIMD2<Float>, radius: Double, alpha: Double,
@@ -73,14 +77,14 @@ struct OverlayPlan {
 
             switch visual.kind {
             case .circle:
-                plan.instances.append(quad(OverlayKindCircle, at: centre, radius: visual.radius, alpha: alpha, color: GameplayOverlayStyle.circleColor))
+                plan.instances.append(quad(OverlayKindCircle, at: centre, radius: visual.radius, alpha: alpha, color: comboColor))
             case .spinner:
                 plan.instances.append(quad(
                     OverlayKindSpinner, at: centre, radius: visual.radius, alpha: alpha,
                     color: GameplayOverlayStyle.spinnerColor, progress: visual.spinnerProgress ?? 0,
                 ))
             case .slider:
-                plan.instances.append(quad(OverlayKindCircle, at: centre, radius: visual.radius, alpha: alpha, color: GameplayOverlayStyle.sliderColor))
+                plan.instances.append(quad(OverlayKindCircle, at: centre, radius: visual.radius, alpha: alpha, color: comboColor))
                 for arrow in visual.reverseArrows where arrow.position.x.isFinite && arrow.position.y.isFinite && arrow.angle.isFinite {
                     plan.instances.append(quad(
                         OverlayKindReverseArrow,
@@ -104,6 +108,8 @@ struct OverlayPlan {
                 slot: frame.count - 1 - position,
                 isSlider: visual.kind == .slider,
                 alpha: Float(alpha),
+                color: comboColor,
+                innerColor: GameplayOverlayStyle.innerTint(visual.comboColour),
                 instances: start ..< plan.instances.count,
             ))
 

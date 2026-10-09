@@ -34,11 +34,14 @@ public struct ObjectVisual: Sendable, Equatable {
     public var reverseArrows: [ReverseArrow]
     /// 0...1 over a spinner's life; `nil` for other kinds.
     public var spinnerProgress: Double?
+    /// The map's colour for this object's combo.
+    public var comboColour: ComboColour
 
     public init(
         objectIndex: Int, kind: Kind, position: PlayfieldPoint, radius: Double, alpha: Double,
         approachScale: Double, approachAlpha: Double, comboNumber: Int,
         ball: PlayfieldPoint? = nil, reverseArrows: [ReverseArrow] = [], spinnerProgress: Double? = nil,
+        comboColour: ComboColour = ComboColour.defaults[0],
     ) {
         self.objectIndex = objectIndex
         self.kind = kind
@@ -51,6 +54,7 @@ public struct ObjectVisual: Sendable, Equatable {
         self.ball = ball
         self.reverseArrows = reverseArrows
         self.spinnerProgress = spinnerProgress
+        self.comboColour = comboColour
     }
 }
 
@@ -88,6 +92,7 @@ public enum GameplayFrame {
             ball: nil,
             reverseArrows: [],
             spinnerProgress: nil,
+            comboColour: map.comboColour(of: placed),
         )
 
         switch object.kind {

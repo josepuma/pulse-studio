@@ -13,6 +13,7 @@ public final class GameplayMap: @unchecked Sendable {
     public static let meshCacheCapacity = 512
 
     public let difficulty: BeatmapDifficulty
+    public let comboColours: [ComboColour]
     public let objects: [PlacedObject]
     public let index: GameplayIndex
 
@@ -27,6 +28,7 @@ public final class GameplayMap: @unchecked Sendable {
 
     public init(_ gameplay: BeatmapGameplay) {
         difficulty = gameplay.difficulty
+        comboColours = gameplay.comboColours
         let radius = BeatmapDifficultyMath.radius(cs: gameplay.difficulty.cs)
         let preempt = BeatmapDifficultyMath.preempt(ar: gameplay.difficulty.ar)
         objects = gameplay.hitObjects.enumerated().map { position, object in
@@ -55,6 +57,10 @@ public final class GameplayMap: @unchecked Sendable {
             )
         }
         index = GameplayIndex(objects)
+    }
+
+    public func comboColour(of placed: PlacedObject) -> ComboColour {
+        ComboColour.pick(from: comboColours, indexWithOffsets: placed.object.comboIndexWithOffsets)
     }
 
     /// How many slider bodies were tessellated so far (a probe for tests).
