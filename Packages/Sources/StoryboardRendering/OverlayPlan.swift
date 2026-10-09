@@ -16,7 +16,7 @@ struct OverlayPlan {
         /// 0 is the earliest (nearest) object.
         var slot: Int
         var isSlider: Bool
-        /// Body opacity for a slider mesh.
+        /// Fade alpha of the object (its border is drawn at this; bodies scale it).
         var alpha: Float
         /// This object's quads: head, ball, arrows.
         var instances: Range<Int>
@@ -31,13 +31,30 @@ struct OverlayPlan {
 
     var isEmpty: Bool { objects.isEmpty }
 
+    /// The per-draw uniforms of one object (`nil`: the approach circles).
+    func uniforms(for object: Object?, projection: matrix_float4x4) -> OverlayDrawUniforms {
+        let slab = OverlayDepth.slab(slot: object?.slot ?? 0, count: slotCount)
+        return OverlayDrawUniforms(
+            projection: projection,
+            color: GameplayOverlayStyle.sliderColor,
+            border: GameplayOverlayStyle.borderColor,
+            innerColor: GameplayOverlayStyle.sliderInnerColor,
+            slotDepth: slab.base,
+            slabSize: slab.size,
+            borderWidth: GameplayOverlayStyle.sliderBorderWidth,
+            alpha: object?.alpha ?? 1,
+            bodyOpacity: Float(GameplayOverlayStyle.bodyOpacity),
+        )
+    }
+
     static func build(_ frame: [ObjectVisual]) -> OverlayPlan {
         var plan = OverlayPlan()
         plan.slotCount = frame.count
         var approaches: [OverlayQuadInstance] = []
 
         for (position, visual) in frame.enumerated() {
-            let alpha = visual.alpha * GameplayOverlayStyle.bodyOpacity
+            // The fade alpha only: the shaders apply the body opacity, so the border stays opaque.
+            let alpha = visual.alpha
             guard visual.position.x.isFinite, visual.position.y.isFinite,
                   visual.radius.isFinite, visual.radius > 0, alpha.isFinite, alpha > 0
             else { continue }

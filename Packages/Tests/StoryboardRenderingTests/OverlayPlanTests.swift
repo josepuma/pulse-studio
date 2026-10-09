@@ -30,7 +30,7 @@ struct OverlayPlanTests {
         #expect(plan.objects.isEmpty)
     }
 
-    @Test("a circle is one instance at its mapped position, dimmed by the style opacity")
+    @Test("a circle is one instance at its mapped position, carrying the fade alpha only")
     func circle() throws {
         let plan = OverlayPlan.build([visual(0, x: 123, y: 45, alpha: 0.5)])
         let instance = try #require(plan.instances.first)
@@ -38,7 +38,7 @@ struct OverlayPlanTests {
         #expect(instance.kind == OverlayKindCircle.rawValue)
         #expect(instance.position == SIMD2<Float>(123, 45))
         #expect(instance.radius == 40)
-        #expect(abs(instance.alpha - Float(0.5 * GameplayOverlayStyle.bodyOpacity)) < 1e-6)
+        #expect(abs(instance.alpha - 0.5) < 1e-6)
     }
 
     @Test("slots count from the EARLIEST object, which is the last of the latest-first list")
@@ -88,6 +88,20 @@ struct OverlayPlanTests {
         let drawnArrow = plan.instances[object.instances.lowerBound + 1]
         #expect(drawnArrow.angle == 1.5)
         #expect(drawnArrow.position == SIMD2<Float>(300, 80))
+    }
+
+    @Test("slider uniforms keep the border opaque and the body translucent")
+    func borderOpacity() throws {
+        let plan = OverlayPlan.build([visual(0, kind: .slider, alpha: 0.8)])
+        let object = try #require(plan.objects.first)
+        let values = plan.uniforms(for: object, projection: matrix_identity_float4x4)
+        let border = values.alpha
+        let body = values.alpha * values.bodyOpacity
+        #expect(abs(border - 0.8) < 1e-6, "the border must be drawn at the fade alpha")
+        #expect(body < border)
+        #expect(values.bodyOpacity == Float(GameplayOverlayStyle.bodyOpacity))
+        #expect(values.innerColor != values.color, "the body needs a centreline darker than its rim")
+        #expect(values.borderWidth == 0.128)
     }
 
     @Test("a spinner carries its progress")

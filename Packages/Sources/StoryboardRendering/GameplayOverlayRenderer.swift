@@ -177,16 +177,7 @@ final class GameplayOverlayRenderer {
         encoder.setCullMode(.none)
 
         func uniforms(for object: OverlayPlan.Object?) -> OverlayDrawUniforms {
-            let slab = OverlayDepth.slab(slot: object?.slot ?? 0, count: plan.slotCount)
-            return OverlayDrawUniforms(
-                projection: overlayProjection,
-                color: GameplayOverlayStyle.sliderColor,
-                border: GameplayOverlayStyle.borderColor,
-                slotDepth: slab.base,
-                slabSize: slab.size,
-                borderWidth: GameplayOverlayStyle.sliderBorderWidth,
-                alpha: object?.alpha ?? 1,
-            )
+            plan.uniforms(for: object, projection: overlayProjection)
         }
 
         func drawQuads(_ range: Range<Int>, _ buffer: MTLBuffer, _ values: inout OverlayDrawUniforms) {
@@ -195,6 +186,7 @@ final class GameplayOverlayRenderer {
             encoder.setRenderPipelineState(quadPipeline)
             encoder.setVertexBuffer(buffer, offset: 0, index: Int(BufferIndexOverlayInstances.rawValue))
             encoder.setVertexBytes(&values, length: MemoryLayout<OverlayDrawUniforms>.stride, index: Int(BufferIndexUniforms.rawValue))
+            encoder.setFragmentBytes(&values, length: MemoryLayout<OverlayDrawUniforms>.stride, index: Int(BufferIndexUniforms.rawValue))
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: range.count, baseInstance: range.lowerBound)
         }
 

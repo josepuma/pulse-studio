@@ -85,10 +85,54 @@ struct GameplayOverlayRenderTests {
         // Playfield (256,192) -> storyboard (320, 248) -> canvas (427, 248).
         let centre = PlayfieldMapping.canvas(PlayfieldPoint(x: 256, y: 192))
         let hit = alpha(bytes, x: Int(centre.x), y: Int(centre.y))
-        #expect(abs(hit - Float(GameplayOverlayStyle.bodyOpacity)) < 0.02)
+        #expect(abs(hit - Float(GameplayOverlayStyle.bodyOpacity)) < 0.02, "hit=\(hit)")
         #expect(alpha(bytes, x: 5, y: 5) == 0)
         #expect(alpha(bytes, x: Int(centre.x) + 200, y: Int(centre.y)) == 0)
         #expect(renderer.passCount == 1)
+    }
+
+    @Test("a slider's border is more opaque and a different colour than its body")
+    func sliderBorderReads() throws {
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let renderer = try GameplayOverlayRenderer(device: device, drawablePixelFormat: .bgra8Unorm)
+        // A long horizontal slider; sample across it at its middle.
+        let map = makeMap("100,192,1000,2,0,L|400:192,1,300")
+        let bytes = try drawOverlay(renderer, map: map, time: 1000, device: device)
+
+        let middle = PlayfieldMapping.canvas(PlayfieldPoint(x: 250, y: 192))
+        let visual = try #require(GameplayFrame.build(map, at: 1000).first)
+        let x = Int(middle.x)
+        let centreY = Int(middle.y)
+        // Inside the border (the outer 12.8% of the radius), clear of the rim.
+        let edgeOffset = Int((visual.radius * 0.94).rounded())
+        let body = alpha(bytes, x: x, y: centreY)
+        let border = alpha(bytes, x: x, y: centreY - edgeOffset)
+        #expect(body > 0.3)
+        #expect(border > body + 0.15, "the border must read more opaque than the body (\(border) vs \(body))")
+
+        func rgb(_ y: Int) -> [UInt8] {
+            let i = (y * Self.width + x) * 4
+            return [bytes[i], bytes[i + 1], bytes[i + 2]]
+        }
+        #expect(rgb(centreY) != rgb(centreY - edgeOffset))
+    }
+
+    @Test("a circle's ring is opaque and white around a translucent coloured body")
+    func circleRingReads() throws {
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let renderer = try GameplayOverlayRenderer(device: device, drawablePixelFormat: .bgra8Unorm)
+        let map = makeMap("256,192,1000,1,0")
+        let bytes = try drawOverlay(renderer, map: map, time: 1000, device: device)
+        let centre = PlayfieldMapping.canvas(PlayfieldPoint(x: 256, y: 192))
+        let visual = try #require(GameplayFrame.build(map, at: 1000).first)
+        let x = Int(centre.x)
+        let y = Int(centre.y)
+        let ringY = y - Int((visual.radius * 0.93).rounded())
+        #expect(alpha(bytes, x: x, y: ringY) > alpha(bytes, x: x, y: y) + 0.15)
+        let i = (y * Self.width + x) * 4
+        let r = (ringY * Self.width + x) * 4
+        // BGRA: the ring is whiter (more red) than the blue-ish body.
+        #expect(bytes[r + 2] > bytes[i + 2])
     }
 
     @Test("an empty frame draws nothing and encodes no pass (S2.3e)")

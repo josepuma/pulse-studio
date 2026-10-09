@@ -57,10 +57,12 @@ struct OverlayDrawUniforms {
     float4x4 projection;
     float4 color;
     float4 border;
+    float4 innerColor;
     float slotDepth;
     float slabSize;
     float borderWidth;
     float alpha;
+    float bodyOpacity;
 };
 
 struct RasterizerData {
@@ -213,22 +215,30 @@ static float overlayCoverage(float distance, float pixel)
     return clamp(0.5 - distance / pixel, 0.0, 1.0);
 }
 
-fragment float4 overlayQuadFragment(OverlayRaster in [[stage_in]])
+fragment float4 overlayQuadFragment(
+    OverlayRaster in [[stage_in]],
+    constant OverlayDrawUniforms &uniforms [[buffer(BufferIndexUniforms)]])
 {
     // One pixel in local units (the radius is 1), for antialiasing.
     const float pixel = max(fwidth(in.local.x), 1e-4);
     const float d = length(in.local);
     float coverage = 0.0;
     float3 rgb = in.color.rgb;
+    // Bodies are translucent; the border and thin shapes stay at the fade alpha.
+    float shapeAlpha = in.alpha * uniforms.bodyOpacity;
 
     if (in.kind == kOverlayKindCircle || in.kind == kOverlayKindBall) {
-        // A body with a white ring on its rim.
+        // A translucent body with an OPAQUE white ring on its rim.
         coverage = overlayCoverage(d - 1.0, pixel);
-        const float ring = overlayCoverage(0.86 - d, pixel);
-        rgb = mix(float3(1.0), in.color.rgb, ring);
+        // `overlayCoverage` is 1 on the NEGATIVE side of its distance, so
+        // `0.86 - d` is 1 inside the body: the rim is its complement.
+        const float rim = 1.0 - overlayCoverage(d - 0.86, pixel);
+        rgb = mix(in.color.rgb, float3(1.0), rim);
+        shapeAlpha = mix(in.alpha * uniforms.bodyOpacity, in.alpha, rim);
     } else if (in.kind == kOverlayKindApproach) {
         // A thin ring; its thickness scales with it, as it does in osu!.
         coverage = overlayCoverage(abs(d - 0.97) - 0.03, pixel);
+        shapeAlpha = in.alpha;
     } else if (in.kind == kOverlayKindReverseArrow) {
         // Rotate into the arrow's frame: it points along +x there.
         const float c = cos(in.angle);
@@ -247,7 +257,7 @@ fragment float4 overlayQuadFragment(OverlayRaster in [[stage_in]])
         coverage = ring * mix(0.35, 1.0, swept);
     }
 
-    const float a = coverage * in.alpha;
+    const float a = coverage * shapeAlpha;
     return float4(rgb * a, a);
 }
 
@@ -280,11 +290,18 @@ fragment float4 sliderBodyFragment(
     SliderRaster in [[stage_in]],
     constant OverlayDrawUniforms &uniforms [[buffer(BufferIndexUniforms)]])
 {
-    // Border from the rim inwards, with a short blend so it is not a stair.
+    // One screen pixel in distance units, so the edges are antialiased in pixels
+    // however large the slider is drawn.
+    const float pixel = max(fwidth(in.distance), 1e-4);
+    // Border from the rim inwards: opaque, with a pixel-wide blend to the body.
     const float edge = 1.0 - uniforms.borderWidth;
-    const float onBorder = smoothstep(edge - 0.03, edge, in.distance);
-    const float3 rgb = mix(uniforms.color.rgb, uniforms.border.rgb, onBorder);
-    const float a = uniforms.alpha;
+    const float onBorder = clamp((in.distance - edge) / pixel + 0.5, 0.0, 1.0);
+    // The body is darker at the centreline and lighter towards the border.
+    const float3 body = mix(uniforms.innerColor.rgb, uniforms.color.rgb, in.distance);
+    const float3 rgb = mix(body, uniforms.border.rgb, onBorder);
+    // Fade the outermost pixel of the rim so it is not a stair.
+    const float rim = clamp((1.0 - in.distance) / pixel, 0.0, 1.0);
+    const float a = mix(uniforms.alpha * uniforms.bodyOpacity, uniforms.alpha, onBorder) * rim;
     return float4(rgb * a, a);
 }
 

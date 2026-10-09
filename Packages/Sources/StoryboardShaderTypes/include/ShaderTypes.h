@@ -94,14 +94,18 @@ typedef struct {
     vector_float4 color;
     /// Slider border colour (rgb).
     vector_float4 border;
+    /// Slider body colour at the centreline (rgb); `color` is the body at the rim.
+    vector_float4 innerColor;
     /// Depth of the object's slab start: earlier objects are nearer.
     float slotDepth;
     /// Slab thickness; `distance * slabSize` is added to `slotDepth`.
     float slabSize;
     /// Fraction of the radius the border takes, measured inwards from the rim.
     float borderWidth;
-    /// Whole-body opacity.
+    /// Fade opacity of the object. The border and rim are drawn at exactly this.
     float alpha;
+    /// Share of `alpha` the translucent bodies keep, so the border reads opaque.
+    float bodyOpacity;
 } OverlayDrawUniforms;
 
 #endif /* ShaderTypes_h */

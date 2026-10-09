@@ -46,15 +46,17 @@ struct OverlayShaderLayoutTests {
 
     @Test("OverlayDrawUniforms matches the shader's layout (S2.3d)")
     func uniforms() {
-        #expect(MemoryLayout<OverlayDrawUniforms>.stride == 112)
+        #expect(MemoryLayout<OverlayDrawUniforms>.stride == 144)
         #expect(MemoryLayout<OverlayDrawUniforms>.alignment == 16)
         #expect(MemoryLayout<OverlayDrawUniforms>.offset(of: \.projection) == 0)
         #expect(MemoryLayout<OverlayDrawUniforms>.offset(of: \.color) == 64)
         #expect(MemoryLayout<OverlayDrawUniforms>.offset(of: \.border) == 80)
-        #expect(MemoryLayout<OverlayDrawUniforms>.offset(of: \.slotDepth) == 96)
-        #expect(MemoryLayout<OverlayDrawUniforms>.offset(of: \.slabSize) == 100)
-        #expect(MemoryLayout<OverlayDrawUniforms>.offset(of: \.borderWidth) == 104)
-        #expect(MemoryLayout<OverlayDrawUniforms>.offset(of: \.alpha) == 108)
+        #expect(MemoryLayout<OverlayDrawUniforms>.offset(of: \.innerColor) == 96)
+        #expect(MemoryLayout<OverlayDrawUniforms>.offset(of: \.slotDepth) == 112)
+        #expect(MemoryLayout<OverlayDrawUniforms>.offset(of: \.slabSize) == 116)
+        #expect(MemoryLayout<OverlayDrawUniforms>.offset(of: \.borderWidth) == 120)
+        #expect(MemoryLayout<OverlayDrawUniforms>.offset(of: \.alpha) == 124)
+        #expect(MemoryLayout<OverlayDrawUniforms>.offset(of: \.bodyOpacity) == 128)
     }
 
     @Test("the new buffer indices do not collide with the sprite ones")
@@ -99,7 +101,7 @@ struct OverlayShaderLayoutTests {
         }
         let quad = ["position", "radius", "alpha", "color", "angle", "progress", "kind"]
         #expect(order(try body(of: "OverlayQuadInstance"), quad) == quad)
-        let uniforms = ["projection", "color", "border", "slotDepth", "slabSize", "borderWidth", "alpha"]
+        let uniforms = ["projection", "color", "border", "innerColor", "slotDepth", "slabSize", "borderWidth", "alpha", "bodyOpacity"]
         #expect(order(try body(of: "OverlayDrawUniforms"), uniforms) == uniforms)
         let vertex = ["x", "y", "distance"]
         #expect(order(try body(of: "SliderVertex"), vertex) == vertex)
