@@ -169,8 +169,20 @@ public final class MetalStoryboardRenderer {
         candidates.reserveCapacity(scratchStates.count)
         for (position, state) in scratchStates.enumerated() {
             let sprite = drawOrder[scratchIndices[position]]
-            let entry = atlas.flatMap { FrameTextures.entry(for: sprite, frameIndex: state.frameIndex, in: $0.entries) }
-            let size = entry?.pixelSize ?? SIMD2<Float>(100, 100)
+            // The same decision drawing made, so what can be picked is what
+            // is on screen: a missing animation frame is not there to click.
+            let entry: TextureAtlas.Entry?
+            let size: SIMD2<Float>
+            switch atlas.map({ FrameTextures.draw(for: sprite, frameIndex: state.frameIndex, in: $0.entries) }) {
+            case let .texture(found)?:
+                entry = found
+                size = found.pixelSize
+            case .placeholder?:
+                entry = nil
+                size = FrameTextures.placeholderSize
+            case .nothing?, nil:
+                continue
+            }
             var state = state
             state.spriteId = sprite.id
             candidates.append(CanvasHitTest.Candidate(
@@ -178,8 +190,8 @@ public final class MetalStoryboardRenderer {
                 width: Double(size.x),
                 height: Double(size.y),
                 origin: sprite.origin,
-                // No entry means a missing image, drawn as a flat quad: its
-                // box is exactly what it draws.
+                // A placeholder is a flat quad: its box is exactly what it
+                // draws, so it has no mask.
                 mask: entry?.mask,
             ))
         }
@@ -401,11 +413,17 @@ public final class MetalStoryboardRenderer {
         paths: [String],
         textureProvider: (String) -> MTKTextureLoader.Source?,
     ) throws {
+        // The placeholder rides along in every atlas, made in code, so a
+        // missing image always has a real flat quad to draw. It is added here
+        // and not to the compared path set: it never changes.
+        let placeholder = FrameTextures.placeholderPath
         atlas = TextureAtlas(
             device: device,
             commandQueue: commandQueue,
-            paths: paths,
-            textureProvider: textureProvider,
+            paths: paths + [placeholder],
+            textureProvider: { path in
+                path == placeholder ? .data(FrameTextures.placeholderImage) : textureProvider(path)
+            },
         )
     }
 
@@ -616,10 +634,25 @@ public final class MetalStoryboardRenderer {
 
             guard state.visible, state.opacity > 0 else { continue }
 
-            // Sprites whose image is missing fall back to a small quad, so a
-            // broken path is visible rather than silently absent.
-            let entry = atlas.flatMap { FrameTextures.entry(for: sprite, frameIndex: state.frameIndex, in: $0.entries) }
-            let size = entry?.pixelSize ?? SIMD2<Float>(100, 100)
+            // Without an entry nothing may sample the atlas: the old fallback,
+            // slice 0 with the full UV rectangle, drew a whole page of other
+            // sprites squeezed into the quad. A plain sprite whose image is
+            // missing draws the flat grey placeholder, so a broken path is
+            // visible; a missing animation frame draws nothing.
+            guard let atlas else { continue }
+            let entry: TextureAtlas.Entry
+            let size: SIMD2<Float>
+            switch FrameTextures.draw(for: sprite, frameIndex: state.frameIndex, in: atlas.entries) {
+            case let .texture(found):
+                entry = found
+                size = found.pixelSize
+            case .placeholder:
+                guard let placeholder = atlas.entries[FrameTextures.placeholderPath] else { continue }
+                entry = placeholder
+                size = FrameTextures.placeholderSize
+            case .nothing:
+                continue
+            }
 
             let isSelected = !measuredClipIDs.isEmpty
                 && ClipBounds.sprite(sprite.id, belongsToAnyOf: measuredClipIDs)
@@ -661,7 +694,7 @@ public final class MetalStoryboardRenderer {
                 halfSize: halfSize,
                 anchor: SIMD2<Float>(anchor.x, anchor.y),
                 rotation: Float(state.rotation),
-                textureIndex: entry?.slice ?? 0,
+                textureIndex: entry.slice,
                 // Straight colour and alpha — the fragment shader premultiplies
                 // once it has sampled the texture.
                 color: SIMD4<Float>(
@@ -670,7 +703,7 @@ public final class MetalStoryboardRenderer {
                     Float(state.b) / 255,
                     opacity,
                 ),
-                uvRect: entry?.uvRect ?? SIMD4<Float>(0, 0, 1, 1),
+                uvRect: entry.uvRect,
             )
 
             // Extend the open batch when the blend mode matches, else start one.
