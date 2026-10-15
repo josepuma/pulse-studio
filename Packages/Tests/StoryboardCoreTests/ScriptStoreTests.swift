@@ -130,6 +130,33 @@ struct ScriptStoreTests {
         return node.id
     }
 
+    /// The folder's scripts are its `.js` files, whether or not a clip names
+    /// them: deleting the last clip that ran a script does not delete the
+    /// script.
+    @Test("lists the folder's scripts and nothing else")
+    func listsScripts() throws {
+        let folder = try temporaryFolder()
+        for name in ["wave.js", "Intro.js", "animate.d.ts", "jsconfig.json", "bg.png",
+                     ".wave.js.saving", "storyboard.aesb"] {
+            try Data().write(to: folder.appending(path: name))
+        }
+        // A directory named like a script is not one.
+        try FileManager.default.createDirectory(
+            at: folder.appending(path: "old.js"), withIntermediateDirectories: false)
+
+        let files = try ScriptStore.files(inFolder: folder)
+
+        #expect(files.map(\.name) == ["Intro", "wave"])
+    }
+
+    @Test("a folder that cannot be read lists nothing rather than throwing")
+    func listsMissingFolder() throws {
+        let folder = FileManager.default.temporaryDirectory
+            .appending(path: "script-store-absent-\(UUID().uuidString)")
+
+        #expect(try ScriptStore.files(inFolder: folder).isEmpty)
+    }
+
     private func temporaryFolder() throws -> URL {
         let folder = FileManager.default.temporaryDirectory
             .appending(path: "script-store-\(UUID().uuidString)")

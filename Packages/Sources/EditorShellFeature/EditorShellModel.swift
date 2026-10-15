@@ -1255,6 +1255,30 @@ public final class EditorShellModel {
     /// wants one axis has the inspector.
     public var lyricScale: Double = 1
 
+    /// How placed lines use the moment each word was sung.
+    public enum LyricWordTiming: String, CaseIterable, Sendable {
+        /// The preset's own sequence: the words carry their timing, unused.
+        case off = "Off"
+        /// Each word appears as it is sung.
+        case reveal = "Reveal"
+        /// The whole line on screen, each word lighting as it is sung.
+        case highlight = "Highlight"
+    }
+
+    /// Karaoke, for lines that know when their words were sung.
+    ///
+    /// Applied after the preset, like the text: a preset brings its own
+    /// stagger and colour, and the point of choosing karaoke is that the song
+    /// decides those instead.
+    public var lyricWordTiming: LyricWordTiming = .off
+
+    /// Whether the lines in the panel know their words' timing — a
+    /// transcription, or a `.srt` timed by word. One timed by line does not,
+    /// and karaoke has nothing to work from.
+    public var lyricLinesHaveWordTiming: Bool {
+        lyricLines.contains { !$0.words.isEmpty }
+    }
+
     /// Which lines have already been placed.
     ///
     /// So a line can be given its own movement — place one, change the preset,
@@ -1325,10 +1349,12 @@ public final class EditorShellModel {
                 maximumDuration: lyricMaximumDuration,
             )
             placedLyricLines = []
+            lyricSource = .transcription
         } catch {
             lyricWords = []
             lyricLines = []
             lyricError = "\(error)"
+            lyricSource = nil
         }
     }
 
@@ -1347,6 +1373,91 @@ public final class EditorShellModel {
         lyricLines = []
         lyricError = nil
         placedLyricLines = []
+        lyricSource = nil
+    }
+
+    // ─── Lyrics from a subtitle file ─────────────────────────────────────────
+
+    /// Where ``lyricLines`` came from.
+    public enum LyricSource: Equatable, Sendable {
+        /// Heard in the song: a draft, with confidences and words to regroup.
+        case transcription
+        /// Read from a `.srt`: somebody's timing done by hand.
+        ///
+        /// A file timed by line is kept exactly. One timed by word —
+        /// karaoke-style, a cue per word — is grouped into lines like a
+        /// transcription, so its grouping knobs apply.
+        case subtitles(name: String, byWord: Bool)
+    }
+
+    /// What the lines in the panel are, so it can offer only what applies to
+    /// them — the grouping knobs fix a machine's guesses, and a subtitle file
+    /// has none.
+    public private(set) var lyricSource: LyricSource?
+
+    /// Larger than any real subtitle file by a wide margin — a feature-length
+    /// film's is around a hundred kilobytes. The cap is so that picking the
+    /// wrong file does not read a video into memory to find no cues in it.
+    public static let maximumSubtitleBytes = 4 * 1024 * 1024
+
+    /// Reads a `.srt` into ``lyricLines``, ready to place with a movement.
+    ///
+    /// A failure keeps the lines already there: picking the wrong file is a
+    /// slip, and should not cost the draft somebody was working through.
+    public func loadSubtitles(from url: URL) {
+        let name = url.lastPathComponent
+
+        if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+           size > Self.maximumSubtitleBytes {
+            lyricError = "\(name) is too large to be a subtitle file."
+            return
+        }
+
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+
+        guard let data = try? Data(contentsOf: url) else {
+            lyricError = "\(name) could not be read."
+            return
+        }
+        // UTF-8 first, which is nearly every file; older subtitle files are
+        // often Windows-1252, and reading them as UTF-8 fails outright rather
+        // than garbling, so the fallback is never reached by a good file.
+        // UTF-16 only behind its BOM: without one, any even-length buffer
+        // "decodes" — measured, a Windows-1252 file came back as garbage
+        // instead of reaching the fallback below it.
+        let hasUTF16BOM = data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF])
+        guard let text = String(data: data, encoding: .utf8)
+            ?? (hasUTF16BOM ? String(data: data, encoding: .utf16) : nil)
+            ?? String(data: data, encoding: .windowsCP1252)
+        else {
+            lyricError = "\(name) is not a text file."
+            return
+        }
+
+        let cues = SubtitleParser.lines(from: text)
+        guard !cues.isEmpty else {
+            lyricError = "\(name) has no timed lines in it."
+            return
+        }
+
+        let byWord = SubtitleParser.isTimedByWord(cues)
+        if byWord {
+            lyricWords = SubtitleParser.words(from: cues)
+            lyricLines = LyricTranscription.lines(
+                from: lyricWords,
+                gapThreshold: lyricGapThreshold,
+                maximumDuration: lyricMaximumDuration,
+            )
+        } else {
+            // No words: the lines are the author's, so `regroupLyrics` has
+            // nothing to work from and leaves them alone.
+            lyricWords = []
+            lyricLines = cues
+        }
+        lyricError = nil
+        placedLyricLines = []
+        lyricSource = .subtitles(name: name, byWord: byWord)
     }
 
 
@@ -1418,6 +1529,26 @@ public final class EditorShellModel {
                 node.values.merge(preset.values) { _, new in new }
             }
             node.values[TextEffect.Param.text] = .text(line.text)
+
+            // Every line that knows its words keeps them, whatever the panel
+            // says: switching a placed clip to karaoke later is then a choice
+            // in the inspector rather than a re-import.
+            if !line.words.isEmpty {
+                node.sungWords = SungTiming.words(from: line.words, clipStart: line.start)
+                switch lyricWordTiming {
+                case .off:
+                    break
+                case .reveal:
+                    node.values[TextEffect.Param.staggerMode] = .choice(SungTiming.choice)
+                    // By word, because that is the unit a singer reaches.
+                    // Character spreads each word's letters across it, and is
+                    // one change away in the inspector.
+                    node.values[TextEffect.Param.unit] = .choice("Word")
+                case .highlight:
+                    node.values[TextEffect.Param.colourMode] = .choice("Highlight")
+                    node.values[TextEffect.Param.sweepOrder] = .choice(SungTiming.choice)
+                }
+            }
 
             // Applied here rather than left to the inspector: at full size a
             // line of twenty-five glyphs is 1200 points on a stage 854 wide,
@@ -1898,6 +2029,12 @@ public final class EditorShellModel {
     @ObservationIgnored private var scriptSnippets: [String: [String]] = [:]
     /// Script files a clip names that are not on disk.
     @ObservationIgnored private var missingScripts: Set<String> = []
+    /// The `.js` files in the project folder, clip or no clip.
+    ///
+    /// The Scripts tab lists files, not clips: removing the last clip that ran
+    /// a script left the file on disk and took its card away, so the only way
+    /// back to it was the Finder.
+    @ObservationIgnored private var folderScripts: [ScriptFile] = []
     /// Bumped when the two above change, so the cards reading them redraw.
     public private(set) var scriptsRevision = 0
 
@@ -1935,7 +2072,7 @@ public final class EditorShellModel {
             }
         }
 
-        return byFile.values
+        let placed = byFile.values
             .map { entry in
                 // Earliest on the timeline; document order breaks a tie, so
                 // the answer never depends on dictionary iteration.
@@ -1955,6 +2092,21 @@ public final class EditorShellModel {
                 let second = effects[$1.clipIDs[0]]?.startTime ?? 0
                 return (first, $0.file.name) < (second, $1.file.name)
             }
+
+        // After the placed ones, by name: with no clip there is no moment on
+        // the timeline to order them by. `folderScripts` is already sorted.
+        let unplaced = folderScripts
+            .filter { byFile[$0.name] == nil }
+            .map { file in
+                ScriptEntry(
+                    file: file,
+                    snippet: scriptSnippets[file.name] ?? [],
+                    isMissing: false,
+                    clipIDs: [],
+                    trackID: nil,
+                )
+            }
+        return placed + unplaced
     }
 
     /// Why a script's last run failed, if any of its clips' did.
@@ -2000,7 +2152,8 @@ public final class EditorShellModel {
     func refreshScriptSnippets() {
         guard let projectFolder else { return }
 
-        let files = Set(effects.nodes.compactMap(\.scriptFile))
+        let onDisk = (try? ScriptStore.files(inFolder: projectFolder)) ?? []
+        let files = Set(effects.nodes.compactMap(\.scriptFile)).union(onDisk)
         var snippets: [String: [String]] = [:]
         var missing: Set<String> = []
         for file in files {
@@ -2014,9 +2167,11 @@ public final class EditorShellModel {
                 .map(String.init)
         }
 
-        guard snippets != scriptSnippets || missing != missingScripts else { return }
+        guard snippets != scriptSnippets || missing != missingScripts || onDisk != folderScripts
+        else { return }
         scriptSnippets = snippets
         missingScripts = missing
+        folderScripts = onDisk
         scriptsRevision &+= 1
     }
 
@@ -2089,7 +2244,8 @@ public final class EditorShellModel {
     /// editor opens an empty untitled window — which reads as the script
     /// having been lost rather than as a file that is not there.
     public func canOpenScript(_ nodeID: EffectNode.ID) -> Bool {
-        scriptURL(for: nodeID) != nil
+        guard let file = effects[nodeID]?.scriptFile else { return false }
+        return scriptURL(for: file) != nil
     }
 
     /// Opens a clip's script in an external editor.
@@ -2097,7 +2253,14 @@ public final class EditorShellModel {
     /// Two clips sharing a file open the same file, which is the point of
     /// sharing: whichever clip you reach for, you are editing the one script.
     public func openScriptExternally(_ nodeID: EffectNode.ID) {
-        guard let url = scriptURL(for: nodeID) else { return }
+        guard let file = effects[nodeID]?.scriptFile else { return }
+        openScriptExternally(file: file)
+    }
+
+    /// Opens a script file by name — the card of a file no clip runs has no
+    /// clip to go through.
+    public func openScriptExternally(file: ScriptFile) {
+        guard let url = scriptURL(for: file) else { return }
         guard openScriptHandler?(url) == true else {
             // A click that silently does nothing is worse than one that
             // fails: the author cannot tell the app from their setup.
@@ -2107,11 +2270,9 @@ public final class EditorShellModel {
         saveError = nil
     }
 
-    /// Where a clip's script lives, when it has one and it is on disk.
-    private func scriptURL(for nodeID: EffectNode.ID) -> URL? {
-        guard let projectFolder,
-              let file = effects[nodeID]?.scriptFile
-        else { return nil }
+    /// Where a script lives, when it is on disk.
+    private func scriptURL(for file: ScriptFile) -> URL? {
+        guard let projectFolder else { return nil }
 
         let url = ScriptStore.url(of: file, inFolder: projectFolder)
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }

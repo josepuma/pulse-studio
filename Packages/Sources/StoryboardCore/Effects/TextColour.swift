@@ -81,6 +81,7 @@ enum TextColour {
     static func plan(
         _ glyphs: [(x: Double, line: Int)],
         units: [Int],
+        sung: [Double]? = nil,
         context: EffectContext,
         rng: EffectRandom,
     ) -> [(colour: EffectColor, highlightAt: Double?)] {
@@ -96,10 +97,18 @@ enum TextColour {
                 from: base, to: context.color(P.colour2),
             ).map { ($0, nil) }
         case .highlight:
+            let order = context.choice(P.sweepOrder)
+            // Each word lit at the moment it was sung — what makes this karaoke
+            // rather than a sweep. Without timing, `Sung` sweeps from the start.
+            if order == SungTiming.choice, let sung {
+                return sung.map { (base, $0) }
+            }
             // From its own stream: a Random sweep never moves the entrance's
             // Random shuffle, which draws from the effect's stream itself.
             var stream = rng.stream(orderTag)
-            let ranks = TextStagger.ranks(units: units, order: context.choice(P.sweepOrder), waveAmount: 0, rng: &stream)
+            let ranks = TextStagger.ranks(
+                units: units, order: order == SungTiming.choice ? "Start" : order, waveAmount: 0, rng: &stream,
+            )
             return highlightTimes(
                 ranks: ranks, start: context.number(P.sweepStart),
                 length: context.number(P.sweepLength), duration: context.duration,

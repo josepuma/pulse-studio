@@ -43,6 +43,60 @@ struct ScriptLibraryTests {
         #expect(intro.snippet.isEmpty)
     }
 
+    // ─── Files without clips ─────────────────────────────────────────────────
+
+    /// Reported: removing duplicate clips from the timeline took the script
+    /// out of the Scripts tab with them. The file was still on disk — the panel
+    /// only listed files some clip named.
+    @Test("removing a file's last clip keeps its card")
+    func lastClipRemoved() throws {
+        let (shell, _, ids) = try project()
+
+        shell.removeEffect(ids.intro)
+
+        let intro = try #require(shell.scriptEntries.first { $0.file.name == "intro" })
+        #expect(intro.clipIDs.isEmpty)
+        #expect(intro.trackID == nil)
+        #expect(!intro.isMissing)
+        #expect(intro.snippet == ["text('hello')"])
+    }
+
+    @Test("a script on disk that no clip names is listed")
+    func unplacedFileListed() throws {
+        let (shell, folder, _) = try project()
+        try ScriptStore.write("sprite(Image.star)", to: try file("loose"), inFolder: folder)
+
+        shell.reloadScripts()
+
+        let loose = try #require(shell.scriptEntries.first { $0.file.name == "loose" })
+        #expect(loose.clipIDs.isEmpty)
+        #expect(loose.snippet == ["sprite(Image.star)"])
+    }
+
+    @Test("files with no clip come after the placed ones, by name")
+    func unplacedOrder() throws {
+        let (shell, folder, ids) = try project()
+        try ScriptStore.write("", to: try file("zeta"), inFolder: folder)
+        try ScriptStore.write("", to: try file("alpha"), inFolder: folder)
+        shell.reloadScripts()
+
+        shell.removeEffect(ids.intro)
+
+        #expect(shell.scriptEntries.map(\.file.name) == ["wave", "alpha", "intro", "zeta"])
+    }
+
+    @Test("a card with no clip still opens its file")
+    func unplacedOpens() throws {
+        let (shell, folder, ids) = try project()
+        shell.removeEffect(ids.intro)
+        var opened: URL?
+        shell.openScriptHandler = { url in opened = url; return true }
+
+        shell.openScriptExternally(file: try file("intro"))
+
+        #expect(opened == ScriptStore.url(of: try file("intro"), inFolder: folder))
+    }
+
     @Test("an edit on disk reaches the snippet after a reload")
     func reloadRefreshesSnippet() throws {
         let (shell, folder, _) = try project()

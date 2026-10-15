@@ -53,6 +53,28 @@ public enum ScriptStore {
         _ = try FileManager.default.replaceItemAt(destination, withItemAt: temporary)
     }
 
+    /// Every script in the folder, by name.
+    ///
+    /// The folder's `.js` files, whether or not a clip names them: a script is
+    /// a file, and removing the last clip that ran one does not delete it. A
+    /// name `ScriptFile` refuses (a hidden temp write, say) is not a script.
+    /// A folder that is not there lists nothing — it is the same absence a
+    /// missing file is, not an error.
+    public static func files(inFolder folder: URL) throws -> [ScriptFile] {
+        guard FileManager.default.fileExists(atPath: folder.path) else { return [] }
+
+        let contents = try FileManager.default.contentsOfDirectory(
+            at: folder,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles],
+        )
+        return contents
+            .filter { $0.lastPathComponent.hasSuffix(ScriptFile.fileExtension) }
+            .filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
+            .compactMap { ScriptFile(name: $0.lastPathComponent) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
     /// Where a script file sits. Always a direct child of the project folder.
     public static func url(of file: ScriptFile, inFolder folder: URL) -> URL {
         folder.appending(path: file.fileName)

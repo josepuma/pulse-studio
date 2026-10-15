@@ -823,8 +823,18 @@ public struct EffectDocument: Sendable, Codable {
         guard tracks[location.track].nodes[location.node].type != SampleEffect.descriptor.type else { return }
         let old = tracks[location.track].nodes[location.node].duration
         let new = max(minimumDuration, duration)
+        let oldStart = tracks[location.track].nodes[location.node].startTime
 
         tracks[location.track].nodes[location.node].startTime = max(0, startTime)
+        // Sung words stay on the song: trimming the start moves the clip's
+        // zero, not the moment each word was sung. Unlike keyframes, which are
+        // the author's and stretch with the clip, these belong to the audio.
+        let shift = oldStart - max(0, startTime)
+        if shift != 0, let sung = tracks[location.track].nodes[location.node].sungWords {
+            tracks[location.track].nodes[location.node].sungWords = sung.map {
+                SungWord(start: $0.start + shift, end: $0.end + shift, characters: $0.characters)
+            }
+        }
         tracks[location.track].nodes[location.node].duration = new
         tracks[location.track].nodes[location.node].transform.rescale(from: old, to: new)
     }

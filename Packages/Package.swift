@@ -173,6 +173,9 @@ let package = Package(
         .testTarget(
             name: "EditorShellFeatureTests",
             dependencies: ["EditorShellFeature", "StoryboardCore", "StoryboardScripting"],
+            // Read through `#filePath`, not bundled: a real file to load the
+            // way the panel does, not a resource the feature ships.
+            exclude: ["Fixtures"],
         ),
 
         // ── Apps ────────────────────────────────────────────────────────────

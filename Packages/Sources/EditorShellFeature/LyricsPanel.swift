@@ -1,6 +1,7 @@
 import DesignSystem
 import StoryboardCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Turning a song into timed text clips.
 ///
@@ -24,6 +25,18 @@ struct LyricsPanel: View {
     @State private var language: String = ""
     @State private var variant: String = ""
     @State private var preset: String = LyricsPanel.noPreset
+    @State private var isPickingSubtitles = false
+
+    /// `.srt` by extension alone, and plain text for a `.txt` export.
+    ///
+    /// No `conformingTo:`. On a Mac where no app declares `.srt`, the system
+    /// gives the file a dynamic type conforming only to `public.data`; a type
+    /// built "conforming to text" is a *different* dynamic identifier, and the
+    /// picker greyed every `.srt` out (reported). Built from the extension
+    /// alone it is the same identifier the file carries — and where an app
+    /// does declare `.srt`, it resolves to that declared type instead.
+    static let subtitleTypes: [UTType] =
+        [UTType(filenameExtension: "srt"), .plainText].compactMap { $0 }
 
     /// Standing in for "leave them still", which is a real choice rather than
     /// the absence of one.
@@ -37,28 +50,30 @@ struct LyricsPanel: View {
         // Grouping and the lines are three things, and at `regular` they read
         // as one list of fields.
         VStack(alignment: .leading, spacing: Theme.Spacing.loose) {
-            if shell.lyricTranscriptionHandler == nil {
-                ComingSoon(
-                    title: "Transcription unavailable",
-                    detail: "This needs macOS 26 or newer.",
-                    systemImage: "waveform.slash",
-                )
-            } else {
+            // A subtitle file needs no speech engine, so the panel is never
+            // hidden behind one: without it, only the Transcribe half goes.
+            if shell.lyricTranscriptionHandler != nil {
                 source
-                if let error = shell.lyricError {
-                    failure(error)
-                }
-                if shell.lyricLines.isEmpty {
-                    empty
-                } else {
+            }
+            subtitles
+            if let error = shell.lyricError {
+                failure(error)
+            }
+            if shell.lyricLines.isEmpty {
+                empty
+            } else {
+                if showsGrouping {
                     Divider().opacity(0.4)
                     grouping
-                    Divider().opacity(0.4)
-                    results
                 }
+                Divider().opacity(0.4)
+                results
             }
         }
         .task { await loadLanguages() }
+        .fileImporter(isPresented: $isPickingSubtitles, allowedContentTypes: Self.subtitleTypes) { result in
+            if case .success(let url) = result { shell.loadSubtitles(from: url) }
+        }
     }
 
     // ─── Reading the song ────────────────────────────────────────────────────
@@ -118,6 +133,37 @@ struct LyricsPanel: View {
         }
     }
 
+    // ─── Reading a subtitle file ─────────────────────────────────────────────
+
+    /// The other way in: somebody's timing, done by hand. Lines in the file
+    /// are placed as they are; a file timed word by word is grouped like a
+    /// transcription.
+    private var subtitles: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.compact) {
+            SectionHeader("Subtitles")
+
+            Button("Load .srt", systemImage: "doc.text") { isPickingSubtitles = true }
+                .buttonStyle(.themed(.secondary, size: .small, fullWidth: true))
+
+            if case .subtitles(let name, let byWord) = shell.lyricSource {
+                Text(byWord ? "\(name) · timed by word, grouped into lines" : name)
+                    .font(Theme.Typography.label)
+                    .foregroundStyle(Theme.Palette.secondary)
+            }
+        }
+    }
+
+    /// The knobs fix where a machine — or a word-by-word file — breaks lines.
+    /// A file timed by line already says where, and the knobs would do nothing.
+    private var showsGrouping: Bool {
+        shell.lyricSource != .subtitles(name: currentSubtitleName, byWord: false)
+    }
+
+    private var currentSubtitleName: String {
+        if case .subtitles(let name, _) = shell.lyricSource { return name }
+        return ""
+    }
+
     // ─── The two knobs ───────────────────────────────────────────────────────
 
     /// Regrouping is free — the words stay in memory — so the numbers that
@@ -169,6 +215,21 @@ struct LyricsPanel: View {
                     selection: Binding(get: { ChoiceOption(preset) }, set: { preset = $0.id }),
                     label: \.id,
                 )
+            }
+
+            // Only where the lines know their words: a file timed by line has
+            // nothing to sing by, and a menu that does nothing lies.
+            if shell.lyricLinesHaveWordTiming {
+                PropertyRow("Karaoke") {
+                    MenuField(
+                        items: EditorShellModel.LyricWordTiming.allCases.map { ChoiceOption($0.rawValue) },
+                        selection: Binding(
+                            get: { ChoiceOption(shell.lyricWordTiming.rawValue) },
+                            set: { shell.lyricWordTiming = .init(rawValue: $0.id) ?? .off },
+                        ),
+                        label: \.id,
+                    )
+                }
             }
 
             // The clip's scale, not the font size: a font size change mints a
@@ -231,7 +292,9 @@ struct LyricsPanel: View {
     }
 
     private var empty: some View {
-        Text("Transcribe the song to see the lines it was sung as.")
+        Text(shell.lyricTranscriptionHandler == nil
+            ? "Load a .srt to place its lines. Transcribing the song needs macOS 26 or newer."
+            : "Transcribe the song, or load a .srt, to see the lines it was sung as.")
             .font(Theme.Typography.label)
             .foregroundStyle(Theme.Palette.secondary)
     }

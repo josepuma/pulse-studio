@@ -378,7 +378,7 @@ struct SidePanelView: View {
             action: { shell.addScriptClip(using: entry.file, at: playheadNow()) },
             rename: { shell.renameScript(entry.file, to: $0) },
             openInEditor: entry.isMissing ? nil : {
-                if let first = entry.clipIDs.first { shell.openScriptExternally(first) }
+                shell.openScriptExternally(file: entry.file)
             },
         )
     }

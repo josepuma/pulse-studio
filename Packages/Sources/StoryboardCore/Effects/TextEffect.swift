@@ -268,6 +268,25 @@ public struct TextEffect: Effect {
         case upright = "Upright"
     }
 
+    /// The static descriptor, with `Sung` offered where it would do something.
+    ///
+    /// Only on a clip that carries sung timing *and* whose text still matches
+    /// it: an option that silently falls back is a control that lies.
+    public func descriptor(for node: EffectNode) -> EffectDescriptor {
+        var resolved = Self.descriptor
+        guard let sung = node.sungWords,
+              case .text(let text)? = node.values[Param.text],
+              SungTiming.fits(sung, text: text)
+        else { return resolved }
+        resolved.parameters = resolved.parameters.map { parameter in
+            guard parameter.id == Param.staggerMode || parameter.id == Param.sweepOrder else { return parameter }
+            var offered = parameter
+            offered.options.append(SungTiming.choice)
+            return offered
+        }
+        return resolved
+    }
+
     public func evaluate(in context: EffectContext, rng: inout EffectRandom) -> [StoryboardSprite] {
         let content = context.text(Param.text)
         guard !content.isEmpty, context.duration > 0 else { return [] }
@@ -287,6 +306,15 @@ public struct TextEffect: Effect {
         case "Line": placed.map(\.line)
         default: Array(placed.indices)
         }
+        // When each glyph was sung, if the clip knows and its text still
+        // matches; otherwise `Sung` falls back to what it was before.
+        let sungTimes: [Double]? = if let sung = context.node.sungWords, SungTiming.fits(sung, text: content) {
+            SungTiming.glyphTimes(sung, unit: context.choice(Param.unit), lines: placed.map(\.line))
+                .map { min(max(0, $0), context.duration) }
+        } else {
+            nil
+        }
+
         let ranks = TextStagger.ranks(
             units: units,
             order: context.choice(Param.staggerFrom),
@@ -314,16 +342,21 @@ public struct TextEffect: Effect {
             context.duration - max(0, context.number(Param.fadeIn)) - fadeOut
                 - (latestExit > 0 ? latestExit : 0),
         )
-        let delays = TextStagger.delays(
-            ranks: ranks,
-            mode: context.choice(Param.staggerMode),
-            stagger: max(0, context.number(Param.stagger)),
-            spread: context.number(Param.staggerSpread),
-            window: window,
-        )
+        let mode = context.choice(Param.staggerMode)
+        let delays = if mode == SungTiming.choice, let sungTimes {
+            sungTimes
+        } else {
+            TextStagger.delays(
+                ranks: ranks,
+                mode: mode == SungTiming.choice ? "Per Unit" : mode,
+                stagger: max(0, context.number(Param.stagger)),
+                spread: context.number(Param.staggerSpread),
+                window: window,
+            )
+        }
 
         let holdStream = rng.stream(TextHoldMotion.tag)
-        let colours = TextColour.plan(placed.map { ($0.x, $0.line) }, units: units, context: context, rng: rng)
+        let colours = TextColour.plan(placed.map { ($0.x, $0.line) }, units: units, sung: sungTimes, context: context, rng: rng)
         let plans = placed.indices.map { index in
             GlyphPlan(
                 delay: delays[index], exitDelay: exitDelays[index], unit: units[index],

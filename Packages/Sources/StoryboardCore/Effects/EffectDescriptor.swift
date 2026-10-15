@@ -129,6 +129,7 @@ public struct EffectNode: Identifiable, Sendable, Equatable, Codable {
         case id, type, name, layer, startTime, duration, seed, values
         case transform, filters, layers, delay, isVisible, isLocked
         case scriptSource, scriptFile, scriptParameters
+        case sungWords
     }
 
     /// Written before filters moved onto the clip, a node has none of its own.
@@ -167,6 +168,7 @@ public struct EffectNode: Identifiable, Sendable, Equatable, Codable {
             .flatMap(ScriptFile.init(name:))
         scriptParameters = try container
             .decodeIfPresent([EffectParameter].self, forKey: .scriptParameters) ?? []
+        sungWords = try container.decodeIfPresent([SungWord].self, forKey: .sungWords)
     }
 
     public let id: String
@@ -264,6 +266,11 @@ public struct EffectNode: Identifiable, Sendable, Equatable, Codable {
     /// the state it just went back to.
     public var scriptParameters: [EffectParameter]
 
+    /// When each word of a lyric clip was sung, in clip time — what makes it
+    /// karaoke. Optional so it is only written when set: every project saved
+    /// before this keeps its bytes, and only lyric clips ever carry it.
+    public var sungWords: [SungWord]?
+
     public init(
         id: String,
         type: String,
@@ -282,6 +289,7 @@ public struct EffectNode: Identifiable, Sendable, Equatable, Codable {
         scriptSource: String? = nil,
         scriptFile: ScriptFile? = nil,
         scriptParameters: [EffectParameter] = [],
+        sungWords: [SungWord]? = nil,
     ) {
         self.id = id
         self.type = type
@@ -300,6 +308,7 @@ public struct EffectNode: Identifiable, Sendable, Equatable, Codable {
         self.scriptSource = scriptSource
         self.scriptFile = scriptFile
         self.scriptParameters = scriptParameters
+        self.sungWords = sungWords
     }
 
     public var endTime: Double { startTime + duration }
