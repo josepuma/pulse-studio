@@ -229,6 +229,13 @@ public struct PreparedSprite: Sendable {
     public let activeStart: Double
     /// Last time the sprite is alive.
     public let activeEnd: Double
+    /// Frame files of an animated sprite, built once here so the per-frame
+    /// path never builds a string; `nil` for a plain sprite.
+    public let framePaths: [String]?
+    public let animation: SpriteAnimation?
+    /// Instant the frame clock starts. Not `activeStart`: parameter flags and
+    /// a loop body's own offset count here, and they do not count there.
+    public let animationStart: Double
 
     var tracks: CommandTracks
     var loops: [PreparedLoop]
@@ -271,6 +278,19 @@ public enum StoryboardResolver {
 
             guard activeStart.isFinite else { continue }
 
+            // The animation clock counts every base command, flags included,
+            // and a loop contributes where its earliest body command lands,
+            // not the bare loop header time.
+            var animationStart = Double.infinity
+            for command in sprite.commands {
+                animationStart = Swift.min(animationStart, command.startTime)
+            }
+            for loop in sprite.loops {
+                guard let bodyStart = loop.commands.map(\.startTime).min() else { continue }
+                animationStart = Swift.min(animationStart, loop.startTime + bodyStart)
+            }
+            if !animationStart.isFinite { animationStart = activeStart }
+
             prepared.append(PreparedSprite(
                 id: sprite.id,
                 layer: sprite.layer,
@@ -280,6 +300,9 @@ public enum StoryboardResolver {
                 defaultY: sprite.defaultY,
                 activeStart: activeStart,
                 activeEnd: activeEnd,
+                framePaths: sprite.animation.map { AnimationFrames.paths(base: sprite.filePath, animation: $0) },
+                animation: sprite.animation,
+                animationStart: animationStart,
                 tracks: CommandTracks(sprite.commands),
                 loops: preparedLoops,
             ))
@@ -598,6 +621,9 @@ public enum StoryboardResolver {
             additive: additive,
             flipH: flipH,
             flipV: flipV,
+            frameIndex: sprite.animation.map {
+                AnimationFrames.index(at: time, origin: sprite.animationStart, animation: $0)
+            } ?? 0,
         )
     }
 

@@ -20,6 +20,8 @@ public struct SpriteRenderState: Sendable, Equatable {
     public var additive: Bool
     public var flipH: Bool
     public var flipV: Bool
+    /// Which animation frame shows; always 0 for a plain sprite.
+    public var frameIndex: Int
 
     public init(
         spriteId: String = "",
@@ -36,6 +38,7 @@ public struct SpriteRenderState: Sendable, Equatable {
         additive: Bool = false,
         flipH: Bool = false,
         flipV: Bool = false,
+        frameIndex: Int = 0,
     ) {
         self.spriteId = spriteId
         self.x = x
@@ -51,5 +54,6 @@ public struct SpriteRenderState: Sendable, Equatable {
         self.additive = additive
         self.flipH = flipH
         self.flipV = flipV
+        self.frameIndex = frameIndex
     }
 }
