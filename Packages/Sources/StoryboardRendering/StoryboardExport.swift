@@ -98,6 +98,25 @@ public enum StoryboardExport {
         for index in prepared.indices {
             let original = prepared[index].filePath
 
+            // An animation's base path is not an image: its frames are, and
+            // they keep the mapper's own names so the line still derives them.
+            // Rewriting the base would break that derivation, so it is left
+            // exactly as named. Generated (built-in/derived/text) animations
+            // have no files to ship and stay as named too.
+            if prepared[index].animation != nil {
+                for frame in AnimationFrames.paths(of: prepared[index]) {
+                    guard images[frame] == nil,
+                          !needsGenerating(frame),
+                          // Checked per frame, not just on the base: every
+                          // derived path is judged on its own.
+                          isContainedRelative(frame),
+                          let data = imageData(frame)
+                    else { continue }
+                    images[frame] = data
+                }
+                continue
+            }
+
             // Each distinct path is generated once however many sprites name
             // it: an emitter points a thousand particles at one image.
             if let already = rewritten[original] {
