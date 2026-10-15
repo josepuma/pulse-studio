@@ -169,7 +169,7 @@ public final class MetalStoryboardRenderer {
         candidates.reserveCapacity(scratchStates.count)
         for (position, state) in scratchStates.enumerated() {
             let sprite = drawOrder[scratchIndices[position]]
-            let entry = atlas?.entries[sprite.filePath]
+            let entry = atlas.flatMap { FrameTextures.entry(for: sprite, frameIndex: state.frameIndex, in: $0.entries) }
             let size = entry?.pixelSize ?? SIMD2<Float>(100, 100)
             var state = state
             state.spriteId = sprite.id
@@ -374,7 +374,7 @@ public final class MetalStoryboardRenderer {
         // Compared before sorting: building the set is proportional to the
         // sprite count and runs on every drag event, while sorting it only
         // matters when it has actually changed.
-        let paths = Array(Set(sprites.map(\.filePath))).sorted()
+        let paths = FrameTextures.atlasPaths(for: sprites)
         // Rebuild when the set of images changed, and also when the last build
         // could not find one of them: a path that resolved to nothing is drawn
         // as a flat quad, and the file it names is exactly the one someone is
@@ -618,7 +618,7 @@ public final class MetalStoryboardRenderer {
 
             // Sprites whose image is missing fall back to a small quad, so a
             // broken path is visible rather than silently absent.
-            let entry = atlas?.entries[sprite.filePath]
+            let entry = atlas.flatMap { FrameTextures.entry(for: sprite, frameIndex: state.frameIndex, in: $0.entries) }
             let size = entry?.pixelSize ?? SIMD2<Float>(100, 100)
 
             let isSelected = !measuredClipIDs.isEmpty

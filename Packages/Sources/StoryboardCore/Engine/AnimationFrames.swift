@@ -47,3 +47,20 @@ public enum AnimationFrames {
         }
     }
 }
+
+// ─── What a prepared sprite draws ───────────────────────────────────────────
+
+extension PreparedSprite {
+    /// Every image file this sprite can draw: all its frames when animated,
+    /// otherwise its one path. The base path of an animation is not an image
+    /// of it, so it is absent here.
+    public var texturePaths: [String] { framePaths ?? [filePath] }
+
+    /// The image for a given frame, by subscript — no string is built per frame.
+    /// A stray index falls back to the base path, which has no entry for an
+    /// animation and so draws the flat quad rather than the wrong picture.
+    public func texturePath(frameIndex: Int) -> String {
+        guard let framePaths, framePaths.indices.contains(frameIndex) else { return filePath }
+        return framePaths[frameIndex]
+    }
+}

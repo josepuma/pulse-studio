@@ -600,3 +600,26 @@ struct AssetsPanelTests {
         ])[0]
     }
 }
+
+@MainActor
+@Suite("Asset usage of animation frames")
+struct AnimationAssetUsageTests {
+    @Test("every frame counts as used, the base path does not")
+    func framesAreUsed() {
+        let shell = EditorShellModel()
+        shell.loadFolderAssets(["sb/f0.png", "sb/f1.png", "sb/f.png"])
+        let animated = StoryboardSprite(
+            id: "a", layer: .foreground, origin: .centre, filePath: "sb/f.png",
+            defaultX: 0, defaultY: 0,
+            commands: [Command(easing: .linear, startTime: 0, endTime: 1000, payload: .fade(start: 1, end: 1))],
+            animation: SpriteAnimation(frameCount: 2, frameDelay: 100, loopType: .loopForever),
+        )
+
+        shell.load(sprites: StoryboardResolver.prepare([animated]), missingImagePaths: [])
+
+        let uses = Dictionary(uniqueKeysWithValues: shell.assets.map { ($0.path, $0.useCount) })
+        #expect(uses["sb/f0.png"] == 1)
+        #expect(uses["sb/f1.png"] == 1)
+        #expect(uses["sb/f.png"] == 0)
+    }
+}

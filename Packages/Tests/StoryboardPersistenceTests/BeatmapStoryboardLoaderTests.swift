@@ -277,3 +277,34 @@ struct BeatmapStoryboardLoaderTests {
         #expect(result.audioURL?.lastPathComponent == "Audio.MP3")
     }
 }
+
+@Suite("Loader animation frames")
+struct LoaderAnimationFrameTests {
+    private let osb = """
+    [Events]
+    Animation,Foreground,Centre,"sb/f.png",320,240,3,100,LoopForever
+    _F,0,0,1000,0,1
+    """
+
+    @Test("a missing frame is reported by its own path, not the base")
+    func reportsMissingFrames() throws {
+        let temporary = try TemporaryFolder(files: [
+            "map.osb": osb,
+            "sb/f0.png": "x",
+            "sb/f2.png": "x",
+        ])
+        let result = try BeatmapStoryboardLoader.load(from: BeatmapFolder(url: temporary.url))
+
+        #expect(result.missingImagePaths == ["sb/f1.png"])
+    }
+
+    @Test("all frames present reports nothing")
+    func allPresent() throws {
+        let temporary = try TemporaryFolder(files: [
+            "map.osb": osb, "sb/f0.png": "x", "sb/f1.png": "x", "sb/f2.png": "x",
+        ])
+        let result = try BeatmapStoryboardLoader.load(from: BeatmapFolder(url: temporary.url))
+
+        #expect(result.missingImagePaths.isEmpty)
+    }
+}

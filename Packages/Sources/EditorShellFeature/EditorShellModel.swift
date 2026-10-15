@@ -4399,7 +4399,7 @@ public final class EditorShellModel {
 
         var counts: [String: Int] = [:]
         for sprite in sprites {
-            counts[sprite.filePath, default: 0] += 1
+            for path in sprite.texturePaths { counts[path, default: 0] += 1 }
         }
         usageCounts = counts
         rebuildAssets(missing: missingImagePaths)

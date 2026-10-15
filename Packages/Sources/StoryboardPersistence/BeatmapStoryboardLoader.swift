@@ -122,7 +122,7 @@ public enum BeatmapStoryboardLoader {
             return renumbered
         }
 
-        let missing = Set(sprites.map(\.filePath))
+        let missing = Set(sprites.flatMap(AnimationFrames.paths(of:)))
             .filter { folder.fileURL(forRelativePath: $0) == nil }
             .sorted()
 
