@@ -49,10 +49,22 @@ public enum OsbWriter {
     // ─── One sprite ──────────────────────────────────────────────────────────
 
     private static func lines(for sprite: StoryboardSprite) -> [String] {
-        var lines = [
-            "Sprite,\(sprite.layer.rawValue),\(sprite.origin.rawValue),"
-                + "\"\(sprite.filePath)\",\(number(sprite.defaultX)),\(number(sprite.defaultY))",
-        ]
+        // The shared head; an animated sprite only changes the keyword and
+        // appends its frame fields.
+        let head = "\(sprite.layer.rawValue),\(sprite.origin.rawValue),"
+            + "\"\(sprite.filePath)\",\(number(sprite.defaultX)),\(number(sprite.defaultY))"
+        var lines: [String]
+        if let animation = sprite.animation {
+            // The loop type is always spelled out: a header that arrived with it
+            // missing or misspelled reads as LoopForever, and the file should
+            // say so rather than depend on every reader guessing the same.
+            lines = [
+                "Animation,\(head),\(animation.frameCount),\(number(animation.frameDelay)),"
+                    + animation.loopType.rawValue,
+            ]
+        } else {
+            lines = ["Sprite,\(head)"]
+        }
 
         for command in sprite.commands {
             lines.append(" " + line(for: command))

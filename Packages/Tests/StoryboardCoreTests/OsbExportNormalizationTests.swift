@@ -266,3 +266,32 @@ struct OsbExportNormalizationTests {
         #expect(commandLines(written([mixed]), "S").isEmpty)
     }
 }
+
+@Suite("OSB export normalisation: animations")
+struct OsbExportNormalizationAnimationTests {
+    @Test("normalising keeps the animation, and still converts S to V and extends P")
+    func keepsAnimation() throws {
+        let animation = SpriteAnimation(frameCount: 4, frameDelay: 100, loopType: .loopOnce)
+        let sprite = StoryboardSprite(
+            id: "a", layer: .foreground, origin: .topCentre, filePath: "sb/a.png",
+            defaultX: 0, defaultY: 0,
+            commands: [
+                Command(easing: .linear, startTime: 0, endTime: 1000, payload: .vectorScale(startX: 1, startY: 2, endX: 1, endY: 2)),
+                Command(easing: .linear, startTime: 0, endTime: 500, payload: .scale(start: 3, end: 3)),
+                Command(easing: .linear, startTime: 200, endTime: 200, payload: .parameter(.flipHorizontal)),
+            ],
+            animation: animation,
+        )
+        let result = try #require(OsbExportNormalization.normalize([sprite]).first)
+        #expect(result.animation == animation)
+        #expect(!result.commands.contains { $0.kind == .scale })
+        let hold = try #require(result.commands.first { $0.kind == .parameter })
+        #expect(hold.endTime > hold.startTime)
+
+        let untouched = StoryboardSprite(
+            id: "b", layer: .foreground, origin: .centre, filePath: "b.png",
+            defaultX: 0, defaultY: 0, animation: animation,
+        )
+        #expect(OsbExportNormalization.normalize([untouched]).first?.animation == animation)
+    }
+}
