@@ -26,6 +26,12 @@ public protocol StoryboardSource: Sendable {
     /// Loads the storyboard's sprites, ready for resolution.
     func loadSprites() throws -> [PreparedSprite]
 
+    /// The storyboard's own sounds, written as `Sample` lines.
+    var samples: [StoryboardSample] { get }
+
+    /// Where a sample's file is, or `nil` when the source cannot supply it.
+    func sampleURL(for path: String) -> URL?
+
     /// Image data for a sprite's file path, or `nil` when it cannot be found —
     /// such sprites are drawn as flat quads rather than failing the load.
     func imageData(for filePath: String) -> Data?
@@ -66,6 +72,9 @@ public extension StoryboardSource {
     var timing: BeatmapTimingData? { nil }
     /// Sources that can supply every image opt out by inheriting this.
     var missingImagePaths: Set<String> { [] }
+    /// Sources with no sounds of their own opt out by inheriting these.
+    var samples: [StoryboardSample] { [] }
+    func sampleURL(for path: String) -> URL? { nil }
     /// Sources with no hit objects to show opt out by inheriting these.
     var gameplayDifficulties: [GameplayDifficultyOption] { [] }
     var defaultGameplayDifficultyPath: String? { nil }

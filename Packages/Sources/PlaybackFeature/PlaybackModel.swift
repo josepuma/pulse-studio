@@ -161,7 +161,20 @@ public final class PlaybackModel {
     /// app calls beside this one, because decoding needs the beatmap folder
     /// and this feature knows nothing about it.
     public func samplesChanged(_ samples: [StoryboardSample]) {
-        sampleSchedule.samples = samples
+        documentSamples = samples
+        rebuildSampleSchedule()
+    }
+
+    /// The beatmap's own sounds and the document's, kept apart like the
+    /// sprites: they change for different reasons — one when a folder opens,
+    /// the other whenever a clip moves — and replacing one list must never
+    /// silence the other.
+    private var beatmapSamples: [StoryboardSample] = []
+    private var documentSamples: [StoryboardSample] = []
+
+    /// The schedule sorts what it is given, so the order here does not matter.
+    private func rebuildSampleSchedule() {
+        sampleSchedule.samples = beatmapSamples + documentSamples
     }
 
     /// Decodes the sample files off the main thread and returns the paths that
@@ -339,6 +352,8 @@ public final class PlaybackModel {
     /// opening a second beatmap adds to the first rather than replacing it.
     public func unload() {
         cancelSamples()
+        beatmapSamples = []
+        documentSamples = []
         sampleSchedule.samples = []
         audio.samples.unload()
         audio.unload()
@@ -407,9 +422,12 @@ public final class PlaybackModel {
         audioURL: URL?,
         timing: BeatmapTimingData? = nil,
         missingImagePaths: Set<String> = [],
+        samples: [StoryboardSample] = [],
     ) {
         beatmapSprites = sprites
         rebuildSprites()
+        beatmapSamples = samples
+        rebuildSampleSchedule()
         // Another storyboard is another picture: it opens fitted, not wherever
         // the last one was being looked at.
         canvasViewport.fit()

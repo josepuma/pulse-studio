@@ -374,3 +374,48 @@ struct LoaderLegacyAnimationDelayTests {
     }
 }
 
+/// `Sample` lines come through the loader beside the sprites.
+@Suite("Loader samples")
+struct LoaderSampleTests {
+    @Test("the .osb's samples are kept")
+    func osbSamples() throws {
+        let temporary = try TemporaryFolder(files: [
+            "map.osb": "[Events]\nSample,1500,0,\"sfx/hit.wav\",80\nSample,3000,1,\"sfx/clap.wav\",100\n",
+            // A folder with only sounds in its .osb and nothing else is not a
+            // beatmap; the song is what makes it one.
+            "audio.mp3": "x",
+        ])
+        let result = try BeatmapStoryboardLoader.load(from: BeatmapFolder(url: temporary.url))
+
+        #expect(result.samples.map(\.path) == ["sfx/hit.wav", "sfx/clap.wav"])
+        #expect(result.samples.map(\.time) == [1500, 3000])
+    }
+
+    @Test("the playing difficulty's samples join the .osb's; the other difficulties' do not")
+    func osuSamples() throws {
+        func osu(_ sample: String) -> String {
+            "[General]\nAudioFilename: audio.mp3\n\n[Events]\nSample,\(sample)\n\n[TimingPoints]\n0,500,4,2,0,100,1,0\n"
+        }
+        let temporary = try TemporaryFolder(files: [
+            "map.osb": "[Events]\nSample,100,0,\"shared.wav\",100\n",
+            "a.osu": osu("200,0,\"a.wav\",100"),
+            "b.osu": osu("300,0,\"b.wav\",100"),
+        ])
+        let result = try BeatmapStoryboardLoader.load(from: BeatmapFolder(url: temporary.url))
+
+        #expect(result.samples.map(\.path) == ["shared.wav", "a.wav"])
+    }
+
+    @Test("a difficulty with only sounds does not take the place of the one that draws")
+    func soundsDoNotChooseTheDifficulty() throws {
+        let temporary = try TemporaryFolder(files: [
+            "a.osu": "[General]\nAudioFilename: audio.mp3\n\n[Events]\nSample,200,0,\"a.wav\",100\n\n[TimingPoints]\n0,500,4,2,0,100,1,0\n",
+            "b.osu": "[General]\nAudioFilename: audio.mp3\n\n[Events]\nSprite,Foreground,Centre,\"sb/b.png\",320,240\n_F,0,0,1000,0,1\nSample,300,0,\"b.wav\",100\n\n[TimingPoints]\n0,500,4,2,0,100,1,0\n",
+        ])
+        let result = try BeatmapStoryboardLoader.load(from: BeatmapFolder(url: temporary.url))
+
+        #expect(result.osuPaths == ["b.osu"])
+        #expect(result.samples.map(\.path) == ["b.wav"])
+    }
+}
+

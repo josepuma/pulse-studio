@@ -8,6 +8,10 @@ public struct BeatmapStoryboardSource: StoryboardSource {
     private let folder: BeatmapFolder
     private let sprites: [StoryboardSprite]
 
+    /// The sounds the beatmap's files place, from the `.osb` and the played
+    /// difficulty.
+    public let samples: [StoryboardSample]
+
     /// Image paths the storyboard references that are not in the folder. Those
     /// sprites still animate, drawn as flat quads.
     public let missingImagePaths: Set<String>
@@ -32,6 +36,7 @@ public struct BeatmapStoryboardSource: StoryboardSource {
 
         self.folder = folder
         sprites = loaded.sprites
+        samples = loaded.samples
         missingImagePaths = Set(loaded.missingImagePaths)
         audioURL = loaded.audioURL
         timing = loaded.timing
@@ -66,5 +71,11 @@ public struct BeatmapStoryboardSource: StoryboardSource {
 
     public func imageData(for filePath: String) -> Data? {
         folder.data(forRelativePath: filePath)
+    }
+
+    /// Resolved inside the folder only: the path comes from a file somebody
+    /// else wrote, and the folder lookup refuses anything that leaves it.
+    public func sampleURL(for path: String) -> URL? {
+        folder.fileURL(forRelativePath: path)
     }
 }

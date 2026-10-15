@@ -154,7 +154,16 @@ struct MetalCanvasView: NSViewRepresentable {
                         audioURL: source.audioURL,
                         timing: source.timing,
                         missingImagePaths: source.missingImagePaths,
+                        samples: source.samples,
                     )
+                    // Decoded off the main thread, into the same bank the
+                    // document's clips use: preparing adds, it never replaces.
+                    let beatmapSamples = source.samples
+                    if !beatmapSamples.isEmpty {
+                        Task { @MainActor [weak model = self.model] in
+                            _ = await model?.loadSampleFiles(beatmapSamples) { source.sampleURL(for: $0) }
+                        }
+                    }
                 } catch {
                     self?.model.contentFailed("\(error)")
                 }

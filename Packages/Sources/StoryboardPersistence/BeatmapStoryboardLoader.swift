@@ -27,6 +27,13 @@ public enum BeatmapStoryboardLoader {
         public let osuPaths: [String]
         /// Sprites whose image could not be found on disk.
         public let missingImagePaths: [String]
+        /// The beatmap's own sounds: `Sample` lines from the `.osb` and from
+        /// the difficulty whose events were used, in that order.
+        ///
+        /// Kept beside the sprites for the same reason as them: a sound
+        /// effect written in the file is part of the storyboard, and dropping
+        /// it here left the preview silent where the game plays it.
+        public var samples: [StoryboardSample] = []
         /// Timing and metadata from the first `.osu` that parsed, when present.
         public let timing: BeatmapTimingData?
         /// The beatmap's audio file, resolved against the folder.
@@ -60,10 +67,14 @@ public enum BeatmapStoryboardLoader {
         // version of the `.osu` it plays, and old maps' animations depend on it.
         let osbPath = folder.files(withExtensions: ["osb"]).first
         var osbSprites: [StoryboardSprite] = []
+        var samples: [StoryboardSample] = []
         if let osbPath, let source = readText(at: osbPath, in: folder) {
-            osbSprites = OsbParser.parse(source).sprites
+            let parsed = OsbParser.parse(source)
+            osbSprites = parsed.sprites
+            samples = parsed.samples
         }
         var timingFormatVersion: Int?
+        var timingSamples: [StoryboardSample] = []
 
         var contributingOsuPaths: [String] = []
         var timing: BeatmapTimingData?
@@ -88,6 +99,7 @@ public enum BeatmapStoryboardLoader {
                     timing = parsed
                     timingOsuPath = osuPath
                     timingFormatVersion = OsuFormatVersion.parse(source)
+                    timingSamples = OsbParser.parse(source).samples
                 }
             }
 
@@ -101,11 +113,20 @@ public enum BeatmapStoryboardLoader {
             // the sprites a mapper happened to put in the `.osu`.
             guard contributingOsuPaths.isEmpty else { continue }
 
-            let parsedSprites = OsbParser.parse(source).sprites
+            let parsedEvents = OsbParser.parse(source)
+            let parsedSprites = parsedEvents.sprites
+            // Which difficulty is played is still decided by its sprites: a
+            // file with only sounds must not take the place of the one that
+            // draws. Its sounds come along with it.
             guard !parsedSprites.isEmpty else { continue }
             contributingOsuPaths.append(osuPath)
+            samples.append(contentsOf: parsedEvents.samples)
             sprites.append(contentsOf: Self.playing(parsedSprites, formatVersion: OsuFormatVersion.parse(source)))
         }
+
+        // No difficulty draws anything: the one that gives the timing is the
+        // one played, so its sounds are the ones heard.
+        if contributingOsuPaths.isEmpty { samples.append(contentsOf: timingSamples) }
 
         // The difficulty that gives the timing is the one played, so its
         // version is the one the shared `.osb` is read with.
@@ -142,7 +163,7 @@ public enum BeatmapStoryboardLoader {
             .flatMap { folder.fileURL(forRelativePath: $0) }
             ?? firstAudioURL(in: folder)
 
-        return Result(
+        var result = Result(
             sprites: sprites,
             osbPath: osbPath,
             osuPaths: contributingOsuPaths,
@@ -152,6 +173,8 @@ public enum BeatmapStoryboardLoader {
             difficulties: difficulties,
             timingOsuPath: timingOsuPath,
         )
+        result.samples = samples
+        return result
     }
 
     /// Sprites with each animation set to the delay the game plays for a file
