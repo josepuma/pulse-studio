@@ -70,6 +70,8 @@ public struct StoryboardSprite: Sendable {
     public var defaultY: Double
     public var commands: [Command]
     public var loops: [LoopGroup]
+    /// Frame data when the header was an `Animation`; `nil` for a plain sprite.
+    public var animation: SpriteAnimation?
 
     public init(
         id: String,
@@ -80,6 +82,7 @@ public struct StoryboardSprite: Sendable {
         defaultY: Double,
         commands: [Command] = [],
         loops: [LoopGroup] = [],
+        animation: SpriteAnimation? = nil,
     ) {
         self.id = id
         self.layer = layer
@@ -89,6 +92,7 @@ public struct StoryboardSprite: Sendable {
         self.defaultY = defaultY
         self.commands = commands
         self.loops = loops
+        self.animation = animation
     }
 }
 

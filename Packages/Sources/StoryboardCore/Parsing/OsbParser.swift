@@ -112,8 +112,9 @@ public enum OsbParser {
 
     /// Parses a `Sprite,...` or `Animation,...` header line.
     ///
-    /// Animation frames are not expanded yet — an `Animation` is treated as a
-    /// static sprite showing its base file path.
+    /// An `Animation` whose header osu! has no defaults for (missing or
+    /// non-positive count or delay, a count over the cap) is kept as a static
+    /// sprite showing its base file.
     static func parseSpriteLine(_ line: String, index: Int) -> StoryboardSprite? {
         let parts = splitCsvRespectingQuotes(line)
         guard let type = parts.first?.trimmed(),
@@ -137,7 +138,20 @@ public enum OsbParser {
             filePath: filePath,
             defaultX: x,
             defaultY: y,
+            animation: type == "Animation" ? animationHeader(parts) : nil,
         )
+    }
+
+    /// Fields 6 to 8 of an `Animation` line, or `nil` when they cannot drive one.
+    private static func animationHeader(_ parts: [String]) -> SpriteAnimation? {
+        // Read as Double and checked before converting: `Int(1e30)` traps.
+        guard let count = finiteDouble(parts, 6), count >= 1,
+              count <= Double(AnimationFrames.maximumFrameCount),
+              let delay = finiteDouble(parts, 7), delay > 0
+        else { return nil }
+
+        let loop = AnimationLoopType(osbName: parts.count > 8 ? parts[8].trimmed() : "")
+        return SpriteAnimation(frameCount: Int(count), frameDelay: delay, loopType: loop)
     }
 
     /// Parses `Sample,<time>,<layer>,"<path>",<volume>`.

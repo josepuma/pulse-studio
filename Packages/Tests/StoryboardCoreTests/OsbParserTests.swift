@@ -60,15 +60,84 @@ struct OsbParserTests {
         #expect(storyboard.sprites.first?.filePath == "sb/a,b.png")
     }
 
-    @Test("treats Animation as a sprite")
-    func parsesAnimationAsSprite() {
+    // ─── Animation headers ───────────────────────────────────────────────────
+
+    private func animation(_ line: String) -> SpriteAnimation? {
+        OsbParser.parse("[Events]\n\(line)").sprites.first?.animation
+    }
+
+    @Test("an Animation header keeps its frame count, delay and loop type")
+    func parsesAnimation() throws {
         let storyboard = OsbParser.parse("""
         [Events]
-        Animation,Foreground,Centre,"sb/f.png",320,240,12,50,LoopForever
+        Animation,Background,Centre,"sb/f.png",320,240,4,100,LoopOnce
         """)
 
         #expect(storyboard.sprites.count == 1)
-        #expect(storyboard.sprites.first?.filePath == "sb/f.png")
+        let sprite = try #require(storyboard.sprites.first)
+        #expect(sprite.filePath == "sb/f.png")
+        #expect(sprite.animation == SpriteAnimation(frameCount: 4, frameDelay: 100, loopType: .loopOnce))
+    }
+
+    @Test("a missing or unknown loop type means forever")
+    func loopTypeDefaults() {
+        #expect(animation(#"Animation,Background,Centre,"f.png",0,0,4,100"#)?.loopType == .loopForever)
+        #expect(animation(#"Animation,Background,Centre,"f.png",0,0,4,100,Bogus"#)?.loopType == .loopForever)
+        #expect(animation(#"Animation,Background,Centre,"f.png",0,0,4,100,"#)?.loopType == .loopForever)
+    }
+
+    @Test("a header osu! has no defaults for draws a static sprite")
+    func invalidHeadersAreStatic() {
+        #expect(animation(#"Animation,Background,Centre,"f.png",0,0,0,100,LoopOnce"#) == nil)
+        #expect(animation(#"Animation,Background,Centre,"f.png",0,0,-3,100"#) == nil)
+        #expect(animation(#"Animation,Background,Centre,"f.png",0,0,4,0"#) == nil)
+        #expect(animation(#"Animation,Background,Centre,"f.png",0,0,4,-50"#) == nil)
+        #expect(animation(#"Animation,Background,Centre,"f.png",0,0,4,nan"#) == nil)
+        #expect(animation(#"Animation,Background,Centre,"f.png",0,0,4,inf"#) == nil)
+        #expect(animation(#"Animation,Background,Centre,"f.png",0,0,4"#) == nil)
+        #expect(animation(#"Animation,Background,Centre,"f.png",0,0"#) == nil)
+        #expect(animation(#"Animation,Background,Centre,"f.png",0,0,,100"#) == nil)
+        #expect(animation(#"Animation,Background,Centre,"f.png",0,0,x,100"#) == nil)
+    }
+
+    @Test("an Animation with a bad header is still a sprite that draws its file")
+    func staticFallbackKeepsSprite() {
+        let sprite = OsbParser.parse("[Events]\nAnimation,Background,Centre,\"f.png\",5,6,0,100").sprites.first
+        #expect(sprite?.filePath == "f.png")
+        #expect(sprite?.defaultX == 5)
+    }
+
+    @Test("a frame count over the cap is static, and absurd numbers do not trap")
+    func hostileCounts() {
+        #expect(animation(#"Animation,Background,Centre,"f.png",0,0,5000,100"#) == nil)
+        #expect(animation(#"Animation,Background,Centre,"f.png",0,0,4096,100"#)?.frameCount == 4096)
+        #expect(animation(#"Animation,Background,Centre,"f.png",0,0,4097,100"#) == nil)
+        #expect(animation(#"Animation,Background,Centre,"f.png",0,0,1e30,100"#) == nil)
+        #expect(animation(#"Animation,Background,Centre,"f.png",0,0,99999999999999999999,100"#) == nil)
+        #expect(animation(#"Animation,Background,Centre,"f.png",0,0,nan,100"#) == nil)
+        #expect(animation(#"Animation,Background,Centre,"f.png",0,0,4,1e308"#)?.frameDelay == 1e308)
+    }
+
+    @Test("commands and loops under an Animation line are still parsed")
+    func animationKeepsCommands() throws {
+        let storyboard = OsbParser.parse("""
+        [Events]
+        Animation,Foreground,Centre,"sb/f.png",320,240,3,80,LoopForever
+         F,0,1000,2000,0,1
+         L,3000,2
+          F,0,0,100,1,0
+        """)
+
+        let sprite = try #require(storyboard.sprites.first)
+        #expect(sprite.animation?.frameCount == 3)
+        #expect(sprite.commands.count == 1)
+        #expect(sprite.loops.count == 1)
+        #expect(sprite.loops.first?.commands.count == 1)
+    }
+
+    @Test("a plain Sprite never carries an animation, whatever trails its header")
+    func spriteIgnoresAnimationFields() {
+        #expect(animation(#"Sprite,Background,Centre,"f.png",0,0,4,100,LoopOnce"#) == nil)
     }
 
     @Test("unknown layer and origin names fall back to Foreground and Centre")
