@@ -56,10 +56,14 @@ public enum BeatmapStoryboardLoader {
         var sprites: [StoryboardSprite] = []
 
         // The shared .osb draws first, beneath any difficulty-specific events.
+        // Its sprites wait for a version: the game reads a `.osb` with the
+        // version of the `.osu` it plays, and old maps' animations depend on it.
         let osbPath = folder.files(withExtensions: ["osb"]).first
+        var osbSprites: [StoryboardSprite] = []
         if let osbPath, let source = readText(at: osbPath, in: folder) {
-            sprites.append(contentsOf: OsbParser.parse(source).sprites)
+            osbSprites = OsbParser.parse(source).sprites
         }
+        var timingFormatVersion: Int?
 
         var contributingOsuPaths: [String] = []
         var timing: BeatmapTimingData?
@@ -83,6 +87,7 @@ public enum BeatmapStoryboardLoader {
                 if timing == nil {
                     timing = parsed
                     timingOsuPath = osuPath
+                    timingFormatVersion = OsuFormatVersion.parse(source)
                 }
             }
 
@@ -99,8 +104,12 @@ public enum BeatmapStoryboardLoader {
             let parsedSprites = OsbParser.parse(source).sprites
             guard !parsedSprites.isEmpty else { continue }
             contributingOsuPaths.append(osuPath)
-            sprites.append(contentsOf: parsedSprites)
+            sprites.append(contentsOf: Self.playing(parsedSprites, formatVersion: OsuFormatVersion.parse(source)))
         }
+
+        // The difficulty that gives the timing is the one played, so its
+        // version is the one the shared `.osb` is read with.
+        sprites.insert(contentsOf: Self.playing(osbSprites, formatVersion: timingFormatVersion), at: 0)
 
         // An empty storyboard is a starting point, not a failure. A folder with
         // audio and a difficulty is exactly what someone opens to write a
@@ -143,6 +152,19 @@ public enum BeatmapStoryboardLoader {
             difficulties: difficulties,
             timingOsuPath: timingOsuPath,
         )
+    }
+
+    /// Sprites with each animation set to the delay the game plays for a file
+    /// of this version. The written delay is kept for the round-trip.
+    private static func playing(_ sprites: [StoryboardSprite], formatVersion: Int?) -> [StoryboardSprite] {
+        sprites.map { sprite in
+            guard var animation = sprite.animation else { return sprite }
+            let delay = AnimationFrames.playbackDelay(animation.frameDelay, formatVersion: formatVersion)
+            animation.playbackFrameDelay = delay == animation.frameDelay ? nil : delay
+            var playing = sprite
+            playing.animation = animation
+            return playing
+        }
     }
 
     private static func fileStem(_ path: String) -> String {

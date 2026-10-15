@@ -29,16 +29,31 @@ public enum AnimationFrames {
         return paths(base: sprite.filePath, animation: animation)
     }
 
+    /// The frame delay the game plays for a file of a given format version.
+    ///
+    /// Files older than v6 come from a time when the game counted animation
+    /// frames in its own coarse ticks, and it still converts those delays on
+    /// load: scaled by 0.015 and rounded to a whole number — an exact half goes
+    /// to the even neighbour — then multiplied by 1.186 and by 1000/60 taken in
+    /// single precision. A 400 ms delay plays at about 118.6 ms. Newer files,
+    /// and a delay with no known version, play as written.
+    public static func playbackDelay(_ delay: Double, formatVersion: Int?) -> Double {
+        guard let formatVersion, formatVersion < 6 else { return delay }
+        let ticks = (0.015 * delay).rounded(.toNearestOrEven)
+        return ticks * 1.186 * Double(Float(1000) / Float(60))
+    }
+
     /// Which frame shows at `time`, given the instant the animation's clock
     /// started. Before that instant it is frame 0 for both loop types.
     public static func index(at time: Double, origin: Double, animation: SpriteAnimation) -> Int {
         let count = min(max(animation.frameCount, 1), maximumFrameCount)
+        let delay = animation.playbackFrameDelay ?? animation.frameDelay
         let elapsed = time - origin
-        guard elapsed >= 0, animation.frameDelay > 0, elapsed.isFinite else { return 0 }
+        guard elapsed >= 0, delay > 0, elapsed.isFinite else { return 0 }
 
         // Kept in Double until the result is known to be small: converting a
         // huge quotient to Int traps.
-        let steps = (elapsed / animation.frameDelay).rounded(.down)
+        let steps = (elapsed / delay).rounded(.down)
         switch animation.loopType {
         case .loopForever:
             return Int(steps.truncatingRemainder(dividingBy: Double(count)))

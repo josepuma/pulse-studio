@@ -308,3 +308,69 @@ struct LoaderAnimationFrameTests {
         #expect(result.missingImagePaths.isEmpty)
     }
 }
+
+/// An old map's animations play at the game's adjusted speed.
+@Suite("Loader legacy animation delay")
+struct LoaderLegacyAnimationDelayTests {
+    private let osb = """
+    [Events]
+    Animation,Foreground,Centre,"sb/f.png",320,240,2,400,LoopForever
+    _F,0,0,1000,0,1
+    """
+
+    private func osu(version: Int, events: String = "") -> String {
+        """
+        osu file format v\(version)
+
+        [General]
+        AudioFilename: audio.mp3
+
+        [Events]
+        \(events)
+
+        [TimingPoints]
+        0,500,4,2,0,100,1,0
+        """
+    }
+
+    @Test("a .osb with a v5 difficulty plays at the adjusted delay")
+    func oldMapAdjusts() throws {
+        let temporary = try TemporaryFolder(files: ["map.osb": osb, "easy.osu": osu(version: 5)])
+        let result = try BeatmapStoryboardLoader.load(from: BeatmapFolder(url: temporary.url))
+        let animation = try #require(result.sprites.first?.animation)
+
+        #expect(animation.frameDelay == 400, "the file's value is kept")
+        let playback = try #require(animation.playbackFrameDelay)
+        #expect(abs(playback - 118.6) < 0.01)
+    }
+
+    @Test("a .osb with a v14 difficulty plays the delay as written")
+    func newMapUnchanged() throws {
+        let temporary = try TemporaryFolder(files: ["map.osb": osb, "easy.osu": osu(version: 14)])
+        let result = try BeatmapStoryboardLoader.load(from: BeatmapFolder(url: temporary.url))
+
+        #expect(result.sprites.first?.animation?.playbackFrameDelay == nil)
+    }
+
+    @Test("an animation inside a v5 .osu is adjusted by its own version")
+    func osuEventsAdjust() throws {
+        let events = """
+        Animation,Foreground,Centre,"sb/g.png",320,240,2,400,LoopForever
+        _F,0,0,1000,0,1
+        """
+        let temporary = try TemporaryFolder(files: ["easy.osu": osu(version: 5, events: events)])
+        let result = try BeatmapStoryboardLoader.load(from: BeatmapFolder(url: temporary.url))
+        let playback = try #require(result.sprites.first?.animation?.playbackFrameDelay)
+
+        #expect(abs(playback - 118.6) < 0.01)
+    }
+
+    @Test("a .osb with no difficulty plays the delay as written")
+    func noDifficulty() throws {
+        let temporary = try TemporaryFolder(files: ["map.osb": osb])
+        let result = try BeatmapStoryboardLoader.load(from: BeatmapFolder(url: temporary.url))
+
+        #expect(result.sprites.first?.animation?.playbackFrameDelay == nil)
+    }
+}
+
